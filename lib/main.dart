@@ -1,6 +1,16 @@
 import 'package:flutter/material.dart';
-
+import './item.dart' show Item;
 void main() {
+  Item myItem = Item();
+  
+  // In giá trị mặc định
+  print("Tên vật phẩm ban đầu: ${myItem.getItemName()}");
+
+  // Cập nhật thông tin mới cho vật phẩm đấu giá
+  myItem.setItem("Laptop Gaming", 15000000, "Cấu hình cao, mới 99%");
+  
+  // Kiểm tra lại sau khi cập nhật
+  print("Tên vật phẩm sau khi cập nhật: ${myItem.getItemName()}");
   runApp(const MyApp());
 }
 
