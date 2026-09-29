@@ -25,7 +25,7 @@
 
 ### 1. Sơ đồ Wireframes tổng thể
 <!-- 🖼️ CHÈN ẢNH WIREFRAMES TỔNG THỂ VÀO ĐÂY -->
-![Wireframe Overview]([![Uploading Wireframe tổng quát.png…]()
+![Wireframe Overview]([images/Wireframe tổng quát]()
 ])
 
 ---
