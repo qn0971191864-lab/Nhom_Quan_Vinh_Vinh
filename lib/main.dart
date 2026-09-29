@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import './user.dart' show User;
 import './item.dart' show Item;
 import './AuctionSession.dart' show PhienDauGia; // Import class phiên đấu giá
+import './phien_dau_gia.dart' show TrangDauGiaPage;
 
 void main() {
   // Kiểm tra nhanh qua console khi chạy ứng dụng
@@ -27,7 +28,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Kiểm tra Các Class Đồ án Đấu Giá'),
+      home: const TrangDauGiaPage(),
     );
   }
 }

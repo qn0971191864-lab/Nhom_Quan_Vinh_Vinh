@@ -38,8 +38,9 @@ void main() {
   testWidgets('màn hình hiển thị dữ liệu của các class', (WidgetTester tester) async {
     await tester.pumpWidget(const MyApp());
 
-    expect(find.text('Phạm Quang Vinh'), findsOneWidget);
-    expect(find.text('Điện thoại thông minh'), findsOneWidget);
+    expect(find.text('Phiên Đấu Giá'), findsOneWidget);
     expect(find.text('Mã phiên: P001'), findsOneWidget);
+    expect(find.text('Bắt đầu: 08:00 26/04/2026'), findsOneWidget);
+    expect(find.text('Kết thúc: 12:00 26/04/2026'), findsOneWidget);
   });
 }
