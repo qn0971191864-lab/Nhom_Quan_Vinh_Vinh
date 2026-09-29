@@ -26,6 +26,7 @@
 ### 1. Sơ đồ Wireframes tổng thể
 <!-- 🖼️ CHÈN ẢNH WIREFRAMES TỔNG THỂ VÀO ĐÂY -->
 ![Wireframe Overview]
+![Wireframe Overview]
 
 ---
 
