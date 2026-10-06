@@ -25,8 +25,12 @@
 
 ### 1. Sơ đồ Wireframes tổng thể
 <!-- 🖼️ CHÈN ẢNH WIREFRAMES TỔNG THỂ VÀO ĐÂY -->
+<<<<<<< HEAD
 ![Wireframe Overview]([images/Wireframe tổng quát]()
 ])
+=======
+![Wireframe Overview]
+>>>>>>> 8fb60a1 (thêm trang dau gia)
 
 ---
 
