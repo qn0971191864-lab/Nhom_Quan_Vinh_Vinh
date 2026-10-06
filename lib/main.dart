@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import './user.dart' show User;
 import './item.dart' show Item;
 import './AuctionSession.dart' show PhienDauGia; // Import class phiên đấu giá
+import './contact_page.dart' show ContactPage;
+import './home_page.dart' show HomePage;
 import './phien_dau_gia.dart' show TrangDauGiaPage;
 
 void main() {
@@ -28,7 +30,58 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const TrangDauGiaPage(),
+      home: const _AppNavigationShell(),
+    );
+  }
+}
+
+class _AppNavigationShell extends StatefulWidget {
+  const _AppNavigationShell();
+
+  @override
+  State<_AppNavigationShell> createState() => _AppNavigationShellState();
+}
+
+class _AppNavigationShellState extends State<_AppNavigationShell> {
+  int _selectedIndex = 0;
+
+  final List<Widget> _pages = const [
+    HomePage(),
+    TrangDauGiaPage(),
+    ContactPage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        selectedItemColor: Colors.blueAccent,
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Trang chủ',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.gavel),
+            label: 'Đấu giá',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Cá nhân',
+          ),
+        ],
+      ),
     );
   }
 }

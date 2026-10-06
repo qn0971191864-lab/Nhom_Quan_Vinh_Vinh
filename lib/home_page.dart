@@ -24,8 +24,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _currentIndexSelected = 0;
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,30 +167,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-      ),
-      // 5. Thanh điều hướng dưới đáy (Bottom Navigation Bar)
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndexSelected,
-        onTap: (index) {
-          setState(() {
-            _currentIndexSelected = index;
-          });
-        },
-        selectedItemColor: Colors.blueAccent,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Trang chủ',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.gavel),
-            label: 'Đấu giá',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Cá nhân',
-          ),
-        ],
       ),
     );
   }

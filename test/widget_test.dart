@@ -23,7 +23,15 @@ void main() {
     final item = Item();
     final phien = PhienDauGia();
 
-    user.setUser(2, 'Nguyễn Văn A', 'a@example.com', 'secret', 'ADMIN', 'a.png', '22/09/2026');
+    user.setUser(
+      2,
+      'Nguyễn Văn A',
+      'a@example.com',
+      'secret',
+      'ADMIN',
+      'a.png',
+      '22/09/2026',
+    );
     item.setItem('Laptop', 15000000, 'Hàng mới');
     phien.setPhienDauGia('P002', '09:00 27/04/2026', '13:00 27/04/2026');
 
@@ -35,12 +43,30 @@ void main() {
     expect(phien.thoiGianKetThuc, '13:00 27/04/2026');
   });
 
-  testWidgets('màn hình hiển thị dữ liệu của các class', (WidgetTester tester) async {
+  testWidgets('bottom navigation chuyển đổi giữa các màn hình', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const MyApp());
 
+    expect(find.text('Trang Chủ & Vật Phẩm'), findsOneWidget);
+    expect(find.text('Phiên Đấu Giá'), findsNothing);
+    expect(find.text('Tài Khoản & Cá Nhân'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.gavel));
+    await tester.pumpAndSettle();
     expect(find.text('Phiên Đấu Giá'), findsOneWidget);
     expect(find.text('Mã phiên: P001'), findsOneWidget);
     expect(find.text('Bắt đầu: 08:00 26/04/2026'), findsOneWidget);
     expect(find.text('Kết thúc: 12:00 26/04/2026'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.person));
+    await tester.pumpAndSettle();
+    expect(find.text('Tài Khoản & Cá Nhân'), findsOneWidget);
+    expect(find.text('Phiên Đấu Giá'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.home));
+    await tester.pumpAndSettle();
+    expect(find.text('Trang Chủ & Vật Phẩm'), findsOneWidget);
+    expect(find.text('Tài Khoản & Cá Nhân'), findsNothing);
   });
 }

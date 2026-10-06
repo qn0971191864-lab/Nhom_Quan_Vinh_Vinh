@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'AuctionSession.dart';
 
 // Class quản lý dữ liệu phiên đấu giá theo thiết kế dự án
@@ -7,7 +8,11 @@ class PhienDauGia {
   String thoiGianBatDau = "08:00 26/04/2026";
   String thoiGianKetThuc = "12:00 26/04/2026";
 
-  void setPhienDauGia(String maPhien, String thoiGianBatDau, String thoiGianKetThuc) {
+  void setPhienDauGia(
+    String maPhien,
+    String thoiGianBatDau,
+    String thoiGianKetThuc,
+  ) {
     this.maPhien = maPhien;
     this.thoiGianBatDau = thoiGianBatDau;
     this.thoiGianKetThuc = thoiGianKetThuc;
@@ -71,10 +76,7 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
                   alignment: Alignment.center,
                   children: [
                     // Đường chéo tượng trưng cho ô chứa ảnh Wireframe
-                    CustomPaint(
-                      size: Size.infinite,
-                      painter: CrossPainter(),
-                    ),
+                    CustomPaint(size: Size.infinite, painter: CrossPainter()),
                     const Text(
                       'Featured Item Image',
                       style: TextStyle(
@@ -149,7 +151,10 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
                   children: [
                     // Header của bảng
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       color: Colors.grey[300],
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -170,12 +175,15 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
                     Expanded(
                       child: ListView.separated(
                         itemCount: _bidHistory.length,
-                        separatorBuilder: (context, index) => const Divider(height: 1),
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final item = _bidHistory[index];
                           return Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
                             child: Row(
                               children: [
                                 const Icon(Icons.account_circle, size: 24),
@@ -201,7 +209,9 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
                     backgroundColor: Colors.redAccent,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 36, vertical: 12),
+                      horizontal: 36,
+                      vertical: 12,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
@@ -213,35 +223,13 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
                   },
                   child: const Text(
                     'Nút Đặt Giá Nhanh',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
             ],
           ),
         ),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 1,
-        selectedItemColor: Colors.black,
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Trang chủ',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.gavel),
-            label: 'Đấu giá',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Cá nhân',
-          ),
-        ],
       ),
     );
   }
