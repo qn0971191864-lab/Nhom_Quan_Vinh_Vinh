@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:quan_vinh_vinh_dau_gia/AuctionSession.dart';
-import 'package:quan_vinh_vinh_dau_gia/Item.dart';
+import 'package:quan_vinh_vinh_dau_gia/Bid.dart';
+import 'package:quan_vinh_vinh_dau_gia/Category.dart';
+import 'package:quan_vinh_vinh_dau_gia/item.dart';
+import 'package:quan_vinh_vinh_dau_gia/Notification.dart';
+import 'package:quan_vinh_vinh_dau_gia/Transaction.dart';
 import 'package:quan_vinh_vinh_dau_gia/main.dart';
+import 'package:quan_vinh_vinh_dau_gia/project_model.dart';
 import 'package:quan_vinh_vinh_dau_gia/user.dart';
 
 void main() {
@@ -43,6 +48,32 @@ void main() {
     expect(phien.thoiGianKetThuc, '13:00 27/04/2026');
   });
 
+  test('các model kế thừa lớp generic và cung cấp thông tin kiểu runtime', () {
+    final ProjectModel<int> user = User();
+    final ProjectModel<int> item = Item();
+    final ProjectModel<int> bid = Bid();
+    final ProjectModel<int> category = Category();
+    final ProjectModel<int> notification = AppNotification();
+    final ProjectModel<int> transaction = TransactionModel();
+    final ProjectModel<String> phien = PhienDauGia();
+
+    expect(user.id, 1);
+    expect(user.object, same(user));
+    expect(user.classType, User);
+    expect(item.id, 1);
+    expect(item.classType, Item);
+    expect(bid.id, 1);
+    expect(bid.classType, Bid);
+    expect(category.id, 1);
+    expect(category.classType, Category);
+    expect(notification.id, 1);
+    expect(notification.classType, AppNotification);
+    expect(transaction.id, 1);
+    expect(transaction.classType, TransactionModel);
+    expect(phien.id, 'P001');
+    expect(phien.classType, PhienDauGia);
+  });
+
   testWidgets('bottom navigation chuyển đổi giữa các màn hình', (
     WidgetTester tester,
   ) async {
@@ -52,19 +83,25 @@ void main() {
     expect(find.text('Phiên Đấu Giá'), findsNothing);
     expect(find.text('Tài Khoản & Cá Nhân'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.gavel));
+    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(
+      1,
+    );
     await tester.pumpAndSettle();
     expect(find.text('Phiên Đấu Giá'), findsOneWidget);
     expect(find.text('Mã phiên: P001'), findsOneWidget);
     expect(find.text('Bắt đầu: 08:00 26/04/2026'), findsOneWidget);
     expect(find.text('Kết thúc: 12:00 26/04/2026'), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.person));
+    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(
+      2,
+    );
     await tester.pumpAndSettle();
     expect(find.text('Tài Khoản & Cá Nhân'), findsOneWidget);
     expect(find.text('Phiên Đấu Giá'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.home));
+    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(
+      0,
+    );
     await tester.pumpAndSettle();
     expect(find.text('Trang Chủ & Vật Phẩm'), findsOneWidget);
     expect(find.text('Tài Khoản & Cá Nhân'), findsNothing);

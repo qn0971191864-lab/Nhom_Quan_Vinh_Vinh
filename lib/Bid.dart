@@ -1,7 +1,12 @@
-class Bid {
+import 'project_model.dart';
+
+class Bid extends ProjectModel<int> {
   int bidId = 1;
   double bidAmount = 2500000;
   String bidTime = "10:30 26/04/2026";
+
+  @override
+  int get id => bidId;
 
   // Hàm Set để thiết lập hoặc cập nhật thông tin lượt đặt giá
   void setBid(int bidId, double bidAmount, String bidTime) {

@@ -1,8 +1,13 @@
-class TransactionModel {
+import 'project_model.dart';
+
+class TransactionModel extends ProjectModel<int> {
   int transactionId = 1;
   double amount = 500000;
   String paymentMethod = "Ví điện tử";
   String status = "Thành công";
+
+  @override
+  int get id => transactionId;
 
   // Hàm Set để thiết lập thông tin giao dịch
   void setTransaction(int transactionId, double amount, String paymentMethod, String status) {

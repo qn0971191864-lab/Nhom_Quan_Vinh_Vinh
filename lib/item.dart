@@ -1,4 +1,8 @@
-class Item {
+import 'project_model.dart';
+
+class Item extends ProjectModel<int> {
+  @override
+  int id = 1;
   String itemName = "Điện thoại thông minh";
   double startingPrice = 2000000;
   String description = "Sản phẩm mới chính hãng";

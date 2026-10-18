@@ -24,9 +24,7 @@
 ## 🎨 Design & Wireframes (Thiết kế giao diện)
 
 ### 1. Sơ đồ Wireframes tổng thể
-<!-- 🖼️ CHÈN ẢNH WIREFRAMES TỔNG THỂ VÀO ĐÂY -->
-![Wireframe Overview]
-![Wireframe Overview]
+![Wireframe tổng quát](<asset/Wireframe tổng quát.png>)
 
 ---
 
@@ -34,9 +32,9 @@
 
 | 📱 Trang Chủ & Sản Phẩm | 🔨 Màn Hình Đấu Giá | 👤 Trang Cá Nhân |
 | :---: | :---: | :---: |
-| <!-- CHÈN ẢNH WIREFRAME TRANG CHỦ --> | <!-- CHÈN ẢNH WIREFRAME ĐẤU GIÁ --> | <!-- CHÈN ẢNH WIREFRAME CÁ NHÂN --> |
-| ![Trang chủ]([Chèn link ảnh Wireframe Trang chủ]) | ![Trang đấu giá]([Chèn link ảnh Wireframe Trang đấu giá]) | ![Trang cá nhân]([Chèn link ảnh Wireframe Trang cá nhân]) |
 | *Giao diện tìm kiếm & danh mục vật phẩm*[cite: 5] | *Phiên đấu giá trực tiếp & đặt giá*[cite: 5] | *Thông tin cá nhân & ví tiền*[cite: 5] |
+
+![Wireframes chi tiết](<asset/ảnh chi tiết.png>)
 
 ---
 
@@ -46,11 +44,31 @@ Dự án được xây dựng dựa trên kiến trúc hướng đối tượng 
 
 * `lib/user.dart`: Quản lý thông tin tài khoản người dùng[cite: 1].
 * `lib/item.dart`: Quản lý thông tin vật phẩm đấu giá[cite: 1, 3].
-* `lib/phien_dau_gia.dart`: Quản lý thời gian và trạng thái phiên đấu giá[cite: 1].
-* `lib/bid.dart`: Quản lý các lượt đặt giá (Bid) của người dùng[cite: 1].
-* `lib/category.dart`: Quản lý danh mục phân loại sản phẩm[cite: 1].
-* `lib/transaction.dart`: Theo dõi biến động dư ví và lịch sử thanh toán[cite: 1].
-* `lib/notification.dart`: Quản lý thông báo hệ thống[cite: 1].
+* `lib/phien_dau_gia.dart`: Màn hình phiên đấu giá và lịch sử bid mẫu.
+* `lib/AuctionSession.dart`: Quản lý thời gian và trạng thái phiên đấu giá.
+* `lib/Bid.dart`: Quản lý các lượt đặt giá của người dùng.
+* `lib/Category.dart`: Quản lý danh mục phân loại sản phẩm.
+* `lib/Transaction.dart`: Theo dõi giao dịch.
+* `lib/Notification.dart`: Quản lý thông báo hệ thống.
+* `lib/project_model.dart`: Lớp generic `ProjectModel<T>` dùng chung cho các model.
+
+Các model kế thừa `ProjectModel<T>` với kiểu định danh phù hợp (`int` hoặc `String`). Lớp cơ sở cung cấp `id`, đối tượng dưới kiểu `Object` và kiểu runtime qua `Type`.
+
+---
+
+## ▶️ Chạy và kiểm thử
+
+```bash
+flutter pub get
+flutter run
+flutter test
+```
+
+Để chạy bản web:
+
+```bash
+flutter run -d chrome
+```
 
 ---
 
@@ -62,10 +80,11 @@ ten_du_an/
 │   ├── main.dart             # Điều hướng chính & BottomNavigationBar[cite: 4, 5]
 │   ├── item.dart             # Class Item[cite: 1, 3]
 │   ├── user.dart             # Class User[cite: 1]
-│   ├── phien_dau_gia.dart    # Class Phiên đấu giá[cite: 1]
-│   ├── bid.dart              # Class Lượt đặt giá[cite: 1]
-│   ├── category.dart         # Class Danh mục[cite: 1]
-│   ├── transaction.dart      # Class Giao dịch[cite: 1]
-│   └── notification.dart     # Class Thông báo[cite: 1]
+│   ├── AuctionSession.dart   # Model phiên đấu giá
+│   ├── Bid.dart              # Model lượt đặt giá
+│   ├── Category.dart         # Model danh mục
+│   ├── Transaction.dart      # Model giao dịch
+│   ├── Notification.dart     # Model thông báo
+│   └── project_model.dart    # Lớp generic cơ sở
 ├── pubspec.yaml              # Quản lý dependencies & tài nguyên
 └── README.md
