@@ -1,4 +1,7 @@
-class User {
+import 'project_model.dart';
+
+class User extends ProjectModel<int> {
+  @override
   int id = 1;
   String fullname = "Phạm Quang Vinh";
   String email = "vinh@example.com";

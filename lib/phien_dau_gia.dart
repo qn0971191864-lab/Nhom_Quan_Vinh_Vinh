@@ -2,27 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'AuctionSession.dart';
 
-// Class quản lý dữ liệu phiên đấu giá theo thiết kế dự án
-class PhienDauGia {
-  String maPhien = "P001";
-  String thoiGianBatDau = "08:00 26/04/2026";
-  String thoiGianKetThuc = "12:00 26/04/2026";
-
-  void setPhienDauGia(
-    String maPhien,
-    String thoiGianBatDau,
-    String thoiGianKetThuc,
-  ) {
-    this.maPhien = maPhien;
-    this.thoiGianBatDau = thoiGianBatDau;
-    this.thoiGianKetThuc = thoiGianKetThuc;
-  }
-
-  String getMaPhien() {
-    return maPhien;
-  }
-}
-
 // Model quản lý lượt đặt giá trong danh sách
 class BidItem {
   final String username;

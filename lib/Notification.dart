@@ -1,8 +1,13 @@
-class AppNotification {
+import 'project_model.dart';
+
+class AppNotification extends ProjectModel<int> {
   int notificationId = 1;
   String title = "Xác nhận đấu giá";
   String content = "Bạn đã đặt giá thành công cho sản phẩm.";
   String timestamp = "26/04/2026 10:35";
+
+  @override
+  int get id => notificationId;
 
   // Hàm Set để thiết lập thông tin thông báo
   void setNotification(int notificationId, String title, String content, String timestamp) {
