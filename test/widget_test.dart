@@ -1,8 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:quan_vinh_vinh_dau_gia/AuctionSession.dart';
-import 'package:quan_vinh_vinh_dau_gia/Item.dart';
+import 'package:quan_vinh_vinh_dau_gia/auction_session.dart';
+import 'package:quan_vinh_vinh_dau_gia/item.dart';
 import 'package:quan_vinh_vinh_dau_gia/main.dart';
 import 'package:quan_vinh_vinh_dau_gia/user.dart';
 
@@ -23,7 +22,15 @@ void main() {
     final item = Item();
     final phien = PhienDauGia();
 
-    user.setUser(2, 'Nguyễn Văn A', 'a@example.com', 'secret', 'ADMIN', 'a.png', '22/09/2026');
+    user.setUser(
+      2,
+      'Nguyễn Văn A',
+      'a@example.com',
+      'secret',
+      'ADMIN',
+      'a.png',
+      '22/09/2026',
+    );
     item.setItem('Laptop', 15000000, 'Hàng mới');
     phien.setPhienDauGia('P002', '09:00 27/04/2026', '13:00 27/04/2026');
 
@@ -35,8 +42,12 @@ void main() {
     expect(phien.thoiGianKetThuc, '13:00 27/04/2026');
   });
 
-  testWidgets('màn hình hiển thị dữ liệu của các class', (WidgetTester tester) async {
+  testWidgets('màn hình hiển thị dữ liệu của các class', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const MyApp());
+    await tester.tap(find.text('Trang chủ'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Phạm Quang Vinh'), findsOneWidget);
     expect(find.text('Điện thoại thông minh'), findsOneWidget);
