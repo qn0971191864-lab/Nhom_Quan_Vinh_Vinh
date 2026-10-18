@@ -1,4 +1,8 @@
-class AppNotification {
+// Import file base_model vào
+import 'base_model.dart'; 
+
+// Thêm extends BaseModel<AppNotification>
+class AppNotification extends BaseModel<AppNotification> {
   int notificationId = 1;
   String title = "Xác nhận đấu giá";
   String content = "Bạn đã đặt giá thành công cho sản phẩm.";
@@ -15,5 +19,12 @@ class AppNotification {
   // Hàm Get để lấy tiêu đề thông báo
   String getTitle() {
     return title;
+  }
+
+  // BẮT BUỘC THÊM: Ghi đè hàm displayDetails từ BaseModel
+  @override
+  void displayDetails() {
+    print(super.toString()); // Sẽ in ra: Đối tượng thuộc lớp: AppNotification
+    print("Mã thông báo: $notificationId - Tiêu đề: $title - Nội dung: $content - Thời gian: $timestamp");
   }
 }

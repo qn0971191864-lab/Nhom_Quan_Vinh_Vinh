@@ -1,4 +1,8 @@
-class PhienDauGia {
+// Import file base_model vào
+import 'base_model.dart'; 
+
+// Thêm extends BaseModel<PhienDauGia>
+class PhienDauGia extends BaseModel<PhienDauGia> {
   String maPhien = "P001";
   String thoiGianBatDau = "08:00 26/04/2026";
   String thoiGianKetThuc = "12:00 26/04/2026";
@@ -13,5 +17,12 @@ class PhienDauGia {
   // Phương thức lấy mã phiên đấu giá
   String getMaPhien() {
     return maPhien;
+  }
+
+  // BẮT BUỘC THÊM: Ghi đè hàm displayDetails từ BaseModel
+  @override
+  void displayDetails() {
+    print(super.toString()); // Sẽ in ra: Đối tượng thuộc lớp: PhienDauGia
+    print("Mã phiên: $maPhien - Bắt đầu: $thoiGianBatDau - Kết thúc: $thoiGianKetThuc");
   }
 }
