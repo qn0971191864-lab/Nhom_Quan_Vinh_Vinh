@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:quan_vinh_vinh_dau_gia/auction_session.dart';
@@ -42,15 +43,30 @@ void main() {
     expect(phien.thoiGianKetThuc, '13:00 27/04/2026');
   });
 
-  testWidgets('màn hình hiển thị dữ liệu của các class', (
+  testWidgets('bottom navigation chuyển đổi giữa các màn hình', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const MyApp());
-    await tester.tap(find.text('Trang chủ'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Phạm Quang Vinh'), findsOneWidget);
-    expect(find.text('Điện thoại thông minh'), findsOneWidget);
+    expect(find.text('Trang Chủ & Vật Phẩm'), findsOneWidget);
+    expect(find.text('Tài Khoản & Cá Nhân'), findsNothing);
+
+    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(1);
+    await tester.pumpAndSettle();
+    expect(find.text('Phiên Đấu Giá'), findsOneWidget);
     expect(find.text('Mã phiên: P001'), findsOneWidget);
+    expect(find.text('Bắt đầu: 08:00 26/04/2026'), findsOneWidget);
+    expect(find.text('Kết thúc: 12:00 26/04/2026'), findsOneWidget);
+
+    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(2);
+    await tester.pumpAndSettle();
+    expect(find.text('Tài Khoản & Cá Nhân'), findsOneWidget);
+    expect(find.text('Phiên Đấu Giá'), findsNothing);
+
+    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(0);
+    await tester.pumpAndSettle();
+    expect(find.text('Trang Chủ & Vật Phẩm'), findsOneWidget);
+    expect(find.text('Tài Khoản & Cá Nhân'), findsNothing);
   });
 }
