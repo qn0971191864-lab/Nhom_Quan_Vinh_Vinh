@@ -1,28 +1,65 @@
-// Import file base_model vào
-import 'base_model.dart'; 
+// ignore_for_file: avoid_print
 
-// Thêm extends BaseModel<Bid>
-class Bid extends BaseModel<Bid> {
+import 'project_model.dart';
+
+class Bid extends ProjectModel<int> {
   int bidId = 1;
   double bidAmount = 2500000;
-  String bidTime = "10:30 26/04/2026";
+  String bidTime = '10:30 26/04/2026';
 
-  // Hàm Set để thiết lập hoặc cập nhật thông tin lượt đặt giá
+  /// ID người dùng đặt giá (tham chiếu tới User)
+  int userId = 0;
+
+  /// ID phiên đấu giá (tham chiếu tới AuctionSession)
+  String sessionId = '';
+
+  @override
+  int get id => bidId;
+
+  Bid({
+    this.bidId = 1,
+    this.bidAmount = 2500000,
+    this.bidTime = '10:30 26/04/2026',
+    this.userId = 0,
+    this.sessionId = '',
+  });
+
   void setBid(int bidId, double bidAmount, String bidTime) {
     this.bidId = bidId;
     this.bidAmount = bidAmount;
     this.bidTime = bidTime;
   }
 
-  // Hàm Get để lấy số tiền đặt giá hiển thị ra UI
   double getBidAmount() {
     return bidAmount;
   }
 
-  // BẮT BUỘC THÊM: Ghi đè hàm displayDetails từ BaseModel
+  // ── Firestore serialization ──────────────────────────────────────────────
+
+  /// Chuyển đối tượng Bid thành Map để lưu lên Cloud Firestore.
+  Map<String, dynamic> toMap() {
+    return {
+      'bidId': bidId,
+      'bidAmount': bidAmount,
+      'bidTime': bidTime,
+      'userId': userId,
+      'sessionId': sessionId,
+    };
+  }
+
+  /// Tạo đối tượng Bid từ Map và Document ID đọc được từ Cloud Firestore.
+  factory Bid.fromMap(Map<String, dynamic> map, [String id = '']) {
+    return Bid(
+      bidId: (map['bidId'] as num?)?.toInt() ?? int.tryParse(id) ?? 0,
+      bidAmount: (map['bidAmount'] as num?)?.toDouble() ?? 0.0,
+      bidTime: map['bidTime'] as String? ?? '',
+      userId: (map['userId'] as num?)?.toInt() ?? 0,
+      sessionId: map['sessionId'] as String? ?? (map['auctionId'] as String? ?? ''),
+    );
+  }
+
   @override
   void displayDetails() {
-    print(super.toString()); // Sẽ in ra: Đối tượng thuộc lớp: Bid
-    print("Mã lượt đặt giá (Bid ID): $bidId - Số tiền: $bidAmount VNĐ - Thời gian: $bidTime");
+    print('Mã lượt đặt giá (Bid ID): $bidId - Số tiền: $bidAmount VNĐ - Thời gian: $bidTime');
   }
 }

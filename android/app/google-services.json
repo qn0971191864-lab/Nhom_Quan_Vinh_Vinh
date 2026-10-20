@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "230200001665",
+    "project_id": "app-dau-gia-36729",
+    "storage_bucket": "app-dau-gia-36729.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:230200001665:android:885cf93911a49dd4e5b980",
+        "android_client_info": {
+          "package_name": "com.example.quan_vinh_vinh_dau_gia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBB6rIBS04UJr4SQEpx9Z0Hu20_sPlCaYI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
