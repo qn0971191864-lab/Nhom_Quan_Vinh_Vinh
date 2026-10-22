@@ -7,7 +7,7 @@
 ---
 
 ## 📌 Giới thiệu dự án
-Ứng dụng Đấu giá Trực tuyến là hệ thống di động hỗ trợ người dùng tham gia các phiên đấu giá sản phẩm/vật phẩm trực tuyến một cách minh bạch, tiện lợi và nhanh chóng[cite: 1]. Hệ thống tích hợp đầy đủ các chức năng từ quản lý tài khoản, danh mục sản phẩm, đặt giá (bid) thời gian thực cho đến lịch sử giao dịch[cite: 1].
+Ứng dụng Đấu giá Trực tuyến là hệ thống di động hỗ trợ người dùng tham gia các phiên đấu giá sản phẩm/vật phẩm trực tuyến một cách minh bạch, tiện lợi và nhanh chóng[cite: 1]. Hệ thống tích hợp đầy đủ các chức năng như quản lý tài khoản, danh mục sản phẩm, đặt giá (bid) thời gian thực cho đến lịch sử giao dịch[cite: 1].
 
 ---
 
