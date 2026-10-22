@@ -22,14 +22,14 @@ class TransactionModel extends ProjectModel<int> {
     int transactionId,
     double amount,
     String paymentMethod,
-    String status,
+    String status, [
     int? userId,
-  ) {
+  ]) {
     this.transactionId = transactionId;
     this.amount = amount;
     this.paymentMethod = paymentMethod;
     this.status = status;
-    this.userId = userId;
+    this.userId = userId ?? this.userId;
   }
 
   double getAmount() {

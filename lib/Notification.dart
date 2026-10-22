@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'project_model.dart';
 
 class AppNotification extends ProjectModel<int> {

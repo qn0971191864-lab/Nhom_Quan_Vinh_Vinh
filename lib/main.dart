@@ -19,9 +19,6 @@ void main() async {
     debugPrint('Firebase initialization error: $e');
   }
   runApp(const MyApp());
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
