@@ -5,9 +5,21 @@ import '../Bid.dart';
 import '../auction_session.dart';
 import '../item.dart';
 import '../user.dart';
+import '../Category.dart';
+
+
 
 /// Dịch vụ tương tác với Cloud Firestore cho ứng dụng Đấu giá trực tuyến.
 class FirebaseService {
+
+  /// Lấy danh sách danh mục (categories) theo dạng Stream.
+  Stream<List<Category>> getCategoriesStream() {
+    return _firestore.collection('categories').snapshots().map((snapshot) {
+              return snapshot.docs.map((doc) => Category.fromMap(doc.data(), doc.id)).toList();
+    });
+  }
+
+
   final FirebaseFirestore? _customFirestore;
 
   FirebaseFirestore get _firestore =>
@@ -17,10 +29,11 @@ class FirebaseService {
   static bool get isFirebaseInitialized => Firebase.apps.isNotEmpty;
 
   /// Tên các collection trong Firestore
-  static const String itemsCollection = 'items';
+static const String itemsCollection = 'items';
   static const String sessionsCollection = 'auction_sessions';
   static const String bidsCollection = 'bids';
   static const String usersCollection = 'users';
+
 
   /// Singleton instance
   static final FirebaseService instance = FirebaseService();

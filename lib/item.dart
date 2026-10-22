@@ -2,41 +2,39 @@
 
 import 'project_model.dart';
 
+/// Mô hình vật phẩm (Item) – ánh xạ tới collection "items" trên Firestore.
 class Item extends ProjectModel<int> {
   @override
-  int id = 1;
-  String itemName = 'Điện thoại thông minh';
-  double startingPrice = 2000000;
-  String description = 'Sản phẩm mới chính hãng';
-
-  /// URL ảnh đại diện của sản phẩm
-  String imageUrl = '';
-
+  int id;
+  String itemName;
+  double startingPrice;
+  String description;
+  String imageUrl;
   /// Trạng thái sản phẩm: 'available', 'in_auction', 'sold'
-  String status = 'available';
+  String status;
+  /// Khóa ngoại tới Category (có thể null nếu chưa gán)
+  int? categoryId;
 
   Item({
-    this.id = 1,
-    this.itemName = 'Điện thoại thông minh',
-    this.startingPrice = 2000000,
-    this.description = 'Sản phẩm mới chính hãng',
+    this.id = 0,
+    this.itemName = 'Tên vật phẩm',
+    this.startingPrice = 0.0,
+    this.description = '',
     this.imageUrl = '',
     this.status = 'available',
+    this.categoryId,
   });
 
+  /// Đặt thông tin vật phẩm.
   void setItem(String itemName, double startingPrice, String description) {
     this.itemName = itemName;
     this.startingPrice = startingPrice;
     this.description = description;
   }
 
-  String getItemName() {
-    return itemName;
-  }
+  String getItemName() => itemName;
 
   // ── Firestore serialization ──────────────────────────────────────────────
-
-  /// Chuyển đối tượng Item thành Map để lưu lên Cloud Firestore.
   Map<String, dynamic> toMap() {
     return {
       'id': id,
@@ -45,6 +43,7 @@ class Item extends ProjectModel<int> {
       'description': description,
       'imageUrl': imageUrl,
       'status': status,
+      if (categoryId != null) 'categoryId': categoryId,
     };
   }
 
@@ -59,6 +58,7 @@ class Item extends ProjectModel<int> {
       description: map['description'] as String? ?? '',
       imageUrl: map['imageUrl'] as String? ?? (map['image'] as String? ?? ''),
       status: map['status'] as String? ?? 'available',
+      categoryId: map['categoryId'] as int?,
     );
   }
 
