@@ -7,10 +7,7 @@ import 'services/firebase_service.dart';
 class TrangDauGiaPage extends StatefulWidget {
   final String sessionId;
 
-  const TrangDauGiaPage({
-    super.key,
-    this.sessionId = 'P001',
-  });
+  const TrangDauGiaPage({super.key, this.sessionId = 'P001'});
 
   @override
   State<TrangDauGiaPage> createState() => _TrangDauGiaPageState();
@@ -40,11 +37,11 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
 
   /// Xử lý sự kiện đặt giá nhanh (kết nối Firestore nếu khả dụng)
   Future<void> _handleQuickBid(AuctionSession session) async {
-    final double step = 100000; // Bước giá 100.000 VNĐ
-    final double currentBid = session.currentHighestBid > 0
+    const step = 100000;
+    final currentBid = session.currentHighestBid > 0
         ? session.currentHighestBid
         : session.startingPrice;
-    final double nextBidAmount = currentBid + step;
+    final nextBidAmount = currentBid + step;
 
     if (!FirebaseService.isFirebaseInitialized) {
       // Khi chưa khởi tạo Firebase (ví dụ: test widget hoặc offline)
@@ -54,9 +51,8 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
           0,
           Bid(
             bidId: DateTime.now().millisecondsSinceEpoch,
-            userId: 999,
             bidAmount: nextBidAmount,
-            bidTime: 'Vừa xong',
+            bidTime: DateTime.now().toIso8601String(),
             sessionId: session.sessionId,
           ),
         );
@@ -74,7 +70,6 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
     try {
       final newBid = Bid(
         bidAmount: nextBidAmount,
-        userId: 1, // ID người dùng hiện tại
         sessionId: session.sessionId,
       );
 
@@ -108,7 +103,9 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
     // Nếu Firebase đã được khởi tạo, lắng nghe Realtime Stream từ Firestore
     if (FirebaseService.isFirebaseInitialized) {
       return StreamBuilder<AuctionSession?>(
-        stream: FirebaseService.instance.getAuctionSessionStream(widget.sessionId),
+        stream: FirebaseService.instance.getAuctionSessionStream(
+          widget.sessionId,
+        ),
         builder: (context, sessionSnapshot) {
           final session = sessionSnapshot.data ?? _currentSession;
           return _buildScaffold(session);
@@ -248,9 +245,7 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
                       ),
                     ),
                     const Divider(height: 1, color: Colors.black),
-                    Expanded(
-                      child: _buildBidHistoryList(session.sessionId),
-                    ),
+                    Expanded(child: _buildBidHistoryList(session.sessionId)),
                   ],
                 ),
               ),
@@ -325,21 +320,18 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
       itemBuilder: (context, index) {
         final bid = bids[index];
         return Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 6,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           child: Row(
             children: [
               const Icon(Icons.account_circle, size: 24),
               const SizedBox(width: 8),
               Text(
-                'User ${bid.userId}',
+                'User ${bid.bidderUid.isNotEmpty ? bid.bidderUid : bid.userId}',
                 style: const TextStyle(fontWeight: FontWeight.w500),
               ),
               const Spacer(),
               Text(
-                '${bid.bidAmount.toStringAsFixed(0)} VNĐ',
+                '${bid.bidAmount} VNĐ',
                 style: const TextStyle(
                   color: Colors.redAccent,
                   fontWeight: FontWeight.bold,

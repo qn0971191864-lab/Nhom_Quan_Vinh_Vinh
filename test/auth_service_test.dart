@@ -41,29 +41,45 @@ void main() {
       },
     );
 
-    test('sign in preserves legacy numeric id and profile fields', () async {
-      profiles.documents['firebase-uid-123'] = {
-        'id': 48,
-        'fullname': 'Saved Name',
-        'email': 'old@example.com',
-        'role': 'ADMIN',
-        'avatar': 'saved.png',
-        'createdAt': '2026-09-16',
-      };
-
-      final user = await service.signIn(
-        email: 'new@example.com',
-        password: 'secret',
+    test('rejects an empty name before creating an account', () async {
+      await expectLater(
+        service.register(
+          email: 'new@example.com',
+          password: 'secret',
+          fullname: '  ',
+        ),
+        throwsArgumentError,
       );
 
-      expect(user.id, 48);
-      expect(user.firebaseUid, 'firebase-uid-123');
-      expect(user.fullname, 'Saved Name');
-      expect(user.email, 'new@example.com');
-      expect(user.role, 'ADMIN');
-      expect(user.avatar, 'saved.png');
-      expect(profiles.savedUid, 'firebase-uid-123');
+      expect(auth.createdUser, isFalse);
     });
+
+    test(
+      'sign in preserves legacy profile but does not rewrite admin role',
+      () async {
+        profiles.documents['firebase-uid-123'] = {
+          'id': 48,
+          'fullname': 'Saved Name',
+          'email': 'old@example.com',
+          'role': 'ADMIN',
+          'avatar': 'saved.png',
+          'createdAt': '2026-09-16',
+        };
+
+        final user = await service.signIn(
+          email: 'new@example.com',
+          password: 'secret',
+        );
+
+        expect(user.id, 48);
+        expect(user.firebaseUid, 'firebase-uid-123');
+        expect(user.fullname, 'Saved Name');
+        expect(user.email, 'new@example.com');
+        expect(user.role, 'ADMIN');
+        expect(user.avatar, 'saved.png');
+        expect(profiles.savedUid, isNull);
+      },
+    );
 
     test(
       'does not interpret a numeric Firebase UID as a legacy user id',
@@ -103,6 +119,7 @@ class _FakeAuthClient implements AuthClient {
   final _states = StreamController<AuthIdentity?>.broadcast();
   String uid = 'firebase-uid-123';
   String? updatedDisplayName;
+  bool createdUser = false;
   bool signedOut = false;
 
   void emit(AuthIdentity? identity) => _states.add(identity);
@@ -114,7 +131,10 @@ class _FakeAuthClient implements AuthClient {
   Future<AuthIdentity> createUserWithEmailAndPassword({
     required String email,
     required String password,
-  }) async => AuthIdentity(uid: uid, email: email);
+  }) async {
+    createdUser = true;
+    return AuthIdentity(uid: uid, email: email);
+  }
 
   @override
   Future<void> updateDisplayName(String displayName) async {

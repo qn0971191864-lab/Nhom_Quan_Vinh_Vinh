@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    function validUserProfile(data, uid) {
+      return data.keys().hasOnly([
+          'id',
+          'firebaseUid',
+          'fullname',
+          'email',
+          'role',
+          'avatar',
+          'createdAt'
+        ])
+        && data.keys().hasAll([
+          'firebaseUid',
+          'fullname',
+          'role',
+          'avatar',
+          'createdAt'
+        ])
+        && data.firebaseUid == uid
+        && data.fullname is string
+        && data.role == 'USER'
+        && data.avatar is string
+        && (!('id' in data) || data.id is int)
+        && (!('email' in data)
+          || (data.email is string
+            && request.auth.token.email is string
+            && data.email == request.auth.token.email));
+    }
+
+    function validItem(data) {
+      return data.keys().hasOnly([
+          'id',
+          'itemName',
+          'startingPrice',
+          'description',
+          'imageUrl',
+          'status',
+          'categoryId',
+          'ownerUid'
+        ])
+        && data.keys().hasAll([
+          'id',
+          'itemName',
+          'startingPrice',
+          'description',
+          'imageUrl',
+          'status'
+        ])
+        && data.id is int
+        && data.id > 0
+        && data.itemName is string
+        && data.itemName.size() > 0
+        && data.startingPrice is int
+        && data.startingPrice > 0
+        && data.description is string
+        && data.imageUrl is string
+        && data.status in ['available', 'in_auction', 'sold']
+        && (!('ownerUid' in data)
+          || (data.ownerUid is string && data.ownerUid.size() > 0))
+        && (!('categoryId' in data)
+          || (data.categoryId is int && data.categoryId > 0));
+    }
+
+    function validCategory(data) {
+      return data.keys().hasOnly(['categoryId', 'categoryName', 'iconUrl'])
+        && data.keys().hasAll(['categoryId', 'categoryName', 'iconUrl'])
+        && data.categoryId is int
+        && data.categoryId > 0
+        && data.categoryName is string
+        && data.categoryName.size() > 0
+        && data.iconUrl is string;
+    }
+
+    match /users/{uid} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == uid);
+      allow create: if isAdmin()
+        || (isSignedIn() && request.auth.uid == uid
+          && validUserProfile(request.resource.data, uid)
+          && request.resource.data.createdAt is timestamp);
+      allow update: if isAdmin()
+        || (isSignedIn()
+          && request.auth.uid == uid
+          && validUserProfile(request.resource.data, uid)
+          && (request.resource.data.createdAt is timestamp
+            || resource.data.createdAt is string)
+          && resource.data.role == 'USER'
+          && request.resource.data.role == 'USER'
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.get('id', null) == resource.data.get('id', null)
+          && request.resource.data.diff(resource.data)
+            .affectedKeys().hasOnly(['fullname', 'avatar', 'email']));
+      allow delete: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && validCategory(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /items/{itemId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && validItem(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /auction_sessions/{sessionId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /bids/{bidId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.userUid == request.auth.uid);
+      allow write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

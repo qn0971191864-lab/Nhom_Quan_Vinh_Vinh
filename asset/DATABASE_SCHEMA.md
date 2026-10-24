@@ -52,7 +52,8 @@ Cloud Functions cần cập nhật trạng thái phiên hết hạn sang `ended`
 ### 1. Bảng `users`
 | Trường | Kiểu | Ghi chú |
 |-------|------|--------|
-| `id` | `BIGINT` (PK) | ID người dùng |
+| `firebase_uid` | `VARCHAR(128)` (PK) | Firebase Authentication UID |
+| `id` | `BIGINT` | ID tương thích dữ liệu cũ, không dùng làm định danh auth |
 | `fullname` | `VARCHAR(255)` | Họ và tên |
 | `email` | `VARCHAR(255)` **UNIQUE** | Email |
 | `role` | `VARCHAR(50)` | `USER`, `ADMIN` … |
@@ -70,6 +71,7 @@ Cloud Functions cần cập nhật trạng thái phiên hết hạn sang `ended`
 | Trường | Kiểu | Ghi chú |
 |-------|------|--------|
 | `id` | `BIGINT` (PK) | ID vật phẩm |
+| `owner_uid` | `VARCHAR(128)` | Firebase Auth UID của chủ vật phẩm |
 | `item_name` | `VARCHAR(255)` | Tên vật phẩm |
 | `starting_price` | `BIGINT` | Giá khởi điểm (VND) |
 | `description` | `TEXT` | Mô tả |
@@ -84,18 +86,21 @@ Cloud Functions cần cập nhật trạng thái phiên hết hạn sang `ended`
 | `item_id` | `BIGINT` (FK → `items.id`) | Vật phẩm đang đấu giá |
 | `starting_price` | `BIGINT` | Giá khởi điểm |
 | `current_highest_bid` | `BIGINT` | Giá cao nhất hiện tại |
-| `highest_bidder_id` | `BIGINT` (FK → `users.id`) | Người đặt giá cao nhất (nullable) |
+| `seller_uid` | `VARCHAR(128)` | Firebase Auth UID của người bán |
+| `minimum_increment` | `BIGINT` | Mức tăng giá tối thiểu (VND) |
+| `highest_bidder_uid` | `VARCHAR(128)` | Firebase Auth UID người đặt cao nhất (nullable) |
 | `start_time` | `TIMESTAMPTZ` | Thời gian bắt đầu |
 | `end_time` | `TIMESTAMPTZ` | Thời gian kết thúc |
-| `status` | `VARCHAR(20)` **CHECK** (`status IN ('upcoming','active','ended','cancelled')`) | Trạng thái phiên |
+| `status` | `VARCHAR(20)` **CHECK** (`status IN ('scheduled','active','ended','cancelled')`) | Trạng thái phiên |
+| `result` | `VARCHAR(20)` | `no_bids` nếu phiên kết thúc không có giá |
 
 ### 5. Bảng `bids`
 | Trường | Kiểu | Ghi chú |
 |-------|------|--------|
-| `bid_id` | `BIGINT` (PK) | ID lượt đặt giá |
-| `bid_amount` | `BIGINT` | Giá đặt (VND) |
+| `bid_id` | `VARCHAR(128)` (PK) | Firestore document ID |
+| `amount` | `BIGINT` | Giá đặt (VND) |
 | `bid_time` | `TIMESTAMPTZ` | Thời gian đặt |
-| `user_id` | `BIGINT` (FK → `users.id`) | Người đặt |
+| `bidder_uid` | `VARCHAR(128)` (FK → `users.firebase_uid`) | Firebase Auth UID người đặt |
 | `session_id` | `VARCHAR(36)` (FK → `auction_sessions.session_id`) | Phiên đấu giá |
 
 ### 6. Bảng `transactions`
@@ -105,7 +110,7 @@ Cloud Functions cần cập nhật trạng thái phiên hết hạn sang `ended`
 | `amount` | `BIGINT` | Số tiền (VND) |
 | `payment_method` | `VARCHAR(50)` | Ví điện tử, thẻ … |
 | `status` | `VARCHAR(20)` | `Thành công`, `Thất bại` … |
-| `user_id` | `BIGINT` (FK → `users.id`) | Người thực hiện |
+| `user_uid` | `VARCHAR(128)` (FK → `users.firebase_uid`) | Firebase Auth UID người thực hiện |
 | `created_at` | `TIMESTAMPTZ` | Thời gian tạo |
 
 ---
@@ -114,7 +119,7 @@ Cloud Functions cần cập nhật trạng thái phiên hết hạn sang `ended`
 * **PK** – mỗi bảng có một khóa chính.
 * **FK** – quan hệ `users ↔ bids`, `users ↔ transactions`, `categories ↔ items`, `items ↔ auction_sessions`, `auction_sessions ↔ bids`.
 * **UNIQUE** – `users.email`.
-* **CHECK** – `auction_sessions.status`.
+* **CHECK** – `auction_sessions.status IN ('scheduled','active','ended','cancelled')`.
 * **Indexes** –
   * `idx_auction_active` trên `auction_sessions(status)` (chỉ các phiên còn mở).
   * `idx_bid_session` trên `bids(session_id)` để truy vấn lịch sử đặt giá nhanh.
@@ -129,7 +134,7 @@ erDiagram
     CATEGORIES ||--o{ ITEMS : "contains"
     ITEMS ||--o{ AUCTION_SESSIONS : "auctioned"
     AUCTION_SESSIONS ||--o{ BIDS : "has"
-    AUCTION_SESSIONS ||--|| USERS : "highest bidder"
+    USERS ||--o{ AUCTION_SESSIONS : "highest bidder"
     BIDS }|..|{ USERS : "by"
     BIDS }|..|{ AUCTION_SESSIONS : "on"
     TRANSACTIONS }|..|{ USERS : "belongs to"

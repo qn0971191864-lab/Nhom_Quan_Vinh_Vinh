@@ -106,28 +106,36 @@ void main() {
       expect(restoredLegacy.status, 'available');
     });
 
-    test('CatalogService.validateItem kiểm tra giá, tên và trạng thái chuẩn', () {
-      expect(
-        () => CatalogService.validateItem(
-          Item(id: 1, itemName: '', startingPrice: 100000),
-        ),
-        throwsArgumentError,
-      );
+    test(
+      'CatalogService.validateItem kiểm tra giá, tên và trạng thái chuẩn',
+      () {
+        expect(
+          () => CatalogService.validateItem(
+            Item(id: 1, itemName: '', startingPrice: 100000),
+          ),
+          throwsArgumentError,
+        );
 
-      expect(
-        () => CatalogService.validateItem(
-          Item(id: 1, itemName: 'Áo cổ', startingPrice: -5000),
-        ),
-        throwsArgumentError,
-      );
+        expect(
+          () => CatalogService.validateItem(
+            Item(id: 1, itemName: 'Áo cổ', startingPrice: -5000),
+          ),
+          throwsArgumentError,
+        );
 
-      expect(
-        () => CatalogService.validateItem(
-          Item(id: 1, itemName: 'Áo cổ', startingPrice: 100000, status: 'invalid_status'),
-        ),
-        throwsArgumentError,
-      );
-    });
+        expect(
+          () => CatalogService.validateItem(
+            Item(
+              id: 1,
+              itemName: 'Áo cổ',
+              startingPrice: 100000,
+              status: 'invalid_status',
+            ),
+          ),
+          throwsArgumentError,
+        );
+      },
+    );
   });
 
   group('3. TransactionModel Mapping & Validation Tests', () {
@@ -137,7 +145,7 @@ void main() {
         amount: 2500000,
         paymentMethod: 'Chuyển khoản ngân hàng',
         status: 'Đang chờ xử lý',
-        userId: 7,
+        userUid: 'firebase-uid-7',
       );
 
       final payload = TransactionService.buildFirestorePayload(pendingTx);
@@ -145,29 +153,32 @@ void main() {
       expect(payload['amount'], 2500000);
       expect(payload['paymentMethod'], 'Chuyển khoản ngân hàng');
       expect(payload['status'], 'Đang chờ xử lý');
-      expect(payload['userId'], 7);
+      expect(payload['userUid'], 'firebase-uid-7');
 
       final restored = TransactionModel.fromMap(payload, '5001');
       expect(restored.transactionId, 5001);
       expect(restored.amount, 2500000);
       expect(restored.paymentMethod, 'Chuyển khoản ngân hàng');
       expect(restored.status, 'Đang chờ xử lý');
-      expect(restored.userId, 7);
+      expect(restored.userUid, 'firebase-uid-7');
     });
 
-    test('TransactionModel.fromMap đọc đúng document ID khi thiếu transactionId', () {
-      final raw = <String, dynamic>{
-        'amount': 1500000,
-        'paymentMethod': 'Ví điện tử',
-        'status': 'Thất bại',
-      };
+    test(
+      'TransactionModel.fromMap đọc đúng document ID khi thiếu transactionId',
+      () {
+        final raw = <String, dynamic>{
+          'amount': 1500000,
+          'paymentMethod': 'Ví điện tử',
+          'status': 'Thất bại',
+        };
 
-      final tx = TransactionModel.fromMap(raw, '9002');
-      expect(tx.transactionId, 9002);
-      expect(tx.amount, 1500000);
-      expect(tx.status, 'Thất bại');
-      expect(tx.userId, isNull);
-    });
+        final tx = TransactionModel.fromMap(raw, '9002');
+        expect(tx.transactionId, 9002);
+        expect(tx.amount, 1500000);
+        expect(tx.status, 'Thất bại');
+        expect(tx.userUid, isNull);
+      },
+    );
 
     test('TransactionService.validateTransaction từ chối số tiền <= 0 hoặc thiếu phương thức', () {
       expect(
@@ -188,6 +199,20 @@ void main() {
             transactionId: 1,
             amount: 500000,
             paymentMethod: '   ',
+            status: 'Đang chờ',
+          ),
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('TransactionService requires Firebase UID ownership', () {
+      expect(
+        () => TransactionService.validateTransaction(
+          TransactionModel(
+            transactionId: 1,
+            amount: 500000,
+            paymentMethod: 'Ví điện tử',
             status: 'Đang chờ',
           ),
         ),

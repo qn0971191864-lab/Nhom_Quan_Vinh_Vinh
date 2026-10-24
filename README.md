@@ -70,6 +70,34 @@ flutter test
 flutter run -d chrome
 ```
 
+## Firestore security rules
+
+Firestore dùng [firestore.rules](./firestore.rules) với mặc định từ chối:
+
+- Chỉ người đăng nhập đọc danh mục, sản phẩm, phiên đấu giá và lịch sử bid.
+- Chỉ tài khoản có Firebase Auth custom claim `admin: true` quản lý danh mục
+  và sản phẩm. Trường `role` trong hồ sơ Firestore không cấp quyền.
+- Người dùng chỉ đọc hồ sơ có document ID bằng Firebase Auth UID của họ; chỉ
+  được tạo hồ sơ `USER` hoặc sửa tên/avatar/email; `createdAt` lưu dạng Timestamp.
+- Client không được ghi trực tiếp phiên, bid hoặc giao dịch. Tạo phiên, đặt giá,
+  hủy phiên và cập nhật trạng thái chạy qua Cloud Functions với Admin SDK.
+- Callable Functions lấy UID từ Firebase Authentication, kiểm tra quyền sở hữu
+  sản phẩm, thời gian, giá tăng tối thiểu và người bán trong transaction Firestore.
+- Tài liệu giao dịch chỉ đọc được bởi UID sở hữu hoặc admin; ghi chỉ dành cho admin
+  để không cho client tự tạo trạng thái thanh toán.
+
+Cloud Functions dùng Node.js 22. Chạy kiểm tra backend:
+
+```bash
+npm install
+npm run test:functions
+npm run test:rules
+```
+
+`npm run test:rules` cần Java để chạy Firestore Emulator. Cài dependencies cho
+Cloud Functions bằng `npm install --prefix functions`; deploy bằng
+`firebase deploy --only functions,firestore:rules`.
+
 ---
 
 ## 📂 Cấu trúc Thư mục Dự án
