@@ -50,11 +50,20 @@ class AuthService {
   final UserProfileStore _profiles;
 
   Stream<User?> get authStateChanges =>
-      _auth.authStateChanges().asyncMap((identity) {
+      _auth.authStateChanges().asyncMap((identity) async {
         if (identity == null) {
           return null;
         }
-        return _synchronizeProfile(identity);
+        final profile = await _profiles.getProfile(identity.uid);
+        if (profile != null) {
+          return User.fromMap(profile)..firebaseUid = identity.uid;
+        }
+        return User(
+          firebaseUid: identity.uid,
+          fullname: identity.displayName ?? '',
+          email: identity.email ?? '',
+          avatar: identity.photoUrl ?? '',
+        );
       });
 
   Future<User> register({
@@ -63,6 +72,9 @@ class AuthService {
     required String fullname,
     String avatar = '',
   }) async {
+    if (fullname.trim().isEmpty) {
+      throw ArgumentError('Họ và tên không được để trống.');
+    }
     final identity = await _auth.createUserWithEmailAndPassword(
       email: email,
       password: password,
@@ -113,11 +125,12 @@ class AuthService {
       profile.putIfAbsent('avatar', () => '');
     }
     profile.putIfAbsent('role', () => 'USER');
-    profile.putIfAbsent('createdAt', () => DateTime.now().toIso8601String());
+    profile.putIfAbsent('createdAt', () => Timestamp.now());
 
-    await _profiles.setProfile(identity.uid, profile);
-    final user = User.fromMap(profile)
-      ..firebaseUid = identity.uid;
+    if (profile['role'] == 'USER') {
+      await _profiles.setProfile(identity.uid, profile);
+    }
+    final user = User.fromMap(profile)..firebaseUid = identity.uid;
     return user;
   }
 }

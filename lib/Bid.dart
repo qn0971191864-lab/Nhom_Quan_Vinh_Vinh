@@ -2,13 +2,17 @@
 
 import 'project_model.dart';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class Bid extends ProjectModel<int> {
   int bidId = 1;
-  double bidAmount = 2500000;
-  String bidTime = '10:30 26/04/2026';
+  String documentId = '';
+  int amount = 2500000;
+  String bidTime = '';
 
-  /// ID người dùng đặt giá (tham chiếu tới User)
+  /// Legacy UI identifier; never serialized or trusted for auction writes.
   int userId = 0;
+  String bidderUid = '';
 
   /// ID phiên đấu giá (tham chiếu tới AuctionSession)
   String sessionId = '';
@@ -16,34 +20,39 @@ class Bid extends ProjectModel<int> {
   @override
   int get id => bidId;
 
+  int get bidAmount => amount;
+  set bidAmount(int value) => amount = value;
+
   Bid({
     this.bidId = 1,
-    this.bidAmount = 2500000,
-    this.bidTime = '10:30 26/04/2026',
+    this.documentId = '',
+    int? bidAmount,
+    int? amount,
+    this.bidTime = '',
     this.userId = 0,
+    this.bidderUid = '',
     this.sessionId = '',
-  });
+  }) : amount = amount ?? bidAmount ?? 2500000;
 
-  void setBid(int bidId, double bidAmount, String bidTime) {
+  void setBid(int bidId, int bidAmount, String bidTime) {
     this.bidId = bidId;
-    this.bidAmount = bidAmount;
+    amount = bidAmount;
     this.bidTime = bidTime;
   }
 
-  double getBidAmount() {
-    return bidAmount;
-  }
+  int getBidAmount() => amount;
 
   // ── Firestore serialization ──────────────────────────────────────────────
 
   /// Chuyển đối tượng Bid thành Map để lưu lên Cloud Firestore.
   Map<String, dynamic> toMap() {
     return {
-      'bidId': bidId,
-      'bidAmount': bidAmount,
-      'bidTime': bidTime,
-      'userId': userId,
       'sessionId': sessionId,
+      'bidderUid': bidderUid,
+      'amount': amount,
+      'bidTime': bidTime.isEmpty
+          ? FieldValue.serverTimestamp()
+          : Timestamp.fromDate(DateTime.parse(bidTime).toUtc()),
     };
   }
 
@@ -51,15 +60,29 @@ class Bid extends ProjectModel<int> {
   factory Bid.fromMap(Map<String, dynamic> map, [String id = '']) {
     return Bid(
       bidId: (map['bidId'] as num?)?.toInt() ?? int.tryParse(id) ?? 0,
-      bidAmount: (map['bidAmount'] as num?)?.toDouble() ?? 0.0,
-      bidTime: map['bidTime'] as String? ?? '',
+      documentId: id,
+      amount:
+          (map['amount'] as num?)?.toInt() ??
+          (map['bidAmount'] as num?)?.toInt() ??
+          0,
+      bidTime: _dateTimeValue(map['bidTime']),
       userId: (map['userId'] as num?)?.toInt() ?? 0,
-      sessionId: map['sessionId'] as String? ?? (map['auctionId'] as String? ?? ''),
+      bidderUid: map['bidderUid'] as String? ?? '',
+      sessionId:
+          map['sessionId'] as String? ?? (map['auctionId'] as String? ?? ''),
     );
+  }
+
+  static String _dateTimeValue(Object? value) {
+    if (value is Timestamp) return value.toDate().toUtc().toIso8601String();
+    if (value is DateTime) return value.toUtc().toIso8601String();
+    return value as String? ?? '';
   }
 
   @override
   void displayDetails() {
-    print('Mã lượt đặt giá (Bid ID): $bidId - Số tiền: $bidAmount VNĐ - Thời gian: $bidTime');
+    print(
+      'Mã lượt đặt giá (Bid ID): $bidId - Số tiền: $bidAmount VNĐ - Thời gian: $bidTime',
+    );
   }
 }

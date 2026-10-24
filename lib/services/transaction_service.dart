@@ -17,7 +17,7 @@ class TransactionService {
   static final TransactionService instance = TransactionService();
 
   TransactionService({FirebaseFirestore? firestore})
-      : _customFirestore = firestore;
+    : _customFirestore = firestore;
 
   // ===========================================================================
   // 1. LƯU & CẬP NHẬT BẢN GHI GIAO DỊCH
@@ -83,14 +83,15 @@ class TransactionService {
   /// Lắng nghe lịch sử giao dịch theo thời gian thực (Stream).
   /// Hỗ trợ lọc theo [userId] và [status].
   Stream<List<TransactionModel>> getTransactionsStream({
-    int? userId,
+    String? userUid,
     String? status,
   }) {
-    Query<Map<String, dynamic>> query =
-        _firestore.collection(transactionsCollection);
+    Query<Map<String, dynamic>> query = _firestore.collection(
+      transactionsCollection,
+    );
 
-    if (userId != null) {
-      query = query.where('userId', isEqualTo: userId);
+    if (userUid != null) {
+      query = query.where('userUid', isEqualTo: userUid);
     }
     if (status != null && status.trim().isNotEmpty) {
       query = query.where('status', isEqualTo: status.trim());
@@ -109,14 +110,15 @@ class TransactionService {
   /// Lấy danh sách lịch sử giao dịch một lần (Future).
   /// Hỗ trợ lọc theo [userId] và [status].
   Future<List<TransactionModel>> getTransactions({
-    int? userId,
+    String? userUid,
     String? status,
   }) async {
-    Query<Map<String, dynamic>> query =
-        _firestore.collection(transactionsCollection);
+    Query<Map<String, dynamic>> query = _firestore.collection(
+      transactionsCollection,
+    );
 
-    if (userId != null) {
-      query = query.where('userId', isEqualTo: userId);
+    if (userUid != null) {
+      query = query.where('userUid', isEqualTo: userUid);
     }
     if (status != null && status.trim().isNotEmpty) {
       query = query.where('status', isEqualTo: status.trim());
@@ -156,6 +158,7 @@ class TransactionService {
   }) {
     validateTransaction(transaction);
     final map = transaction.toMap();
+    map.remove('createdAt');
     if (includeServerTimestamp) {
       map['createdAt'] = FieldValue.serverTimestamp();
     }
@@ -175,8 +178,8 @@ class TransactionService {
     if (transaction.status.trim().isEmpty) {
       throw ArgumentError('Trạng thái giao dịch (status) không được để trống.');
     }
-    if (transaction.userId != null && transaction.userId! <= 0) {
-      throw ArgumentError('userId (nếu có) phải là số nguyên dương.');
+    if (transaction.userUid == null || transaction.userUid!.trim().isEmpty) {
+      throw ArgumentError('userUid không được để trống.');
     }
   }
 }

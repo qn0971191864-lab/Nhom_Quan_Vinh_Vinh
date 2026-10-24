@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../Bid.dart';
@@ -6,6 +7,25 @@ import '../auction_session.dart';
 import '../item.dart';
 import '../user.dart';
 import '../Category.dart';
+
+abstract interface class AuctionCallableClient {
+  Future<Map<String, dynamic>> call(String name, Map<String, dynamic> data);
+}
+
+class _FirebaseAuctionCallableClient implements AuctionCallableClient {
+  _FirebaseAuctionCallableClient(this._functions);
+
+  final FirebaseFunctions _functions;
+
+  @override
+  Future<Map<String, dynamic>> call(
+    String name,
+    Map<String, dynamic> data,
+  ) async {
+    final result = await _functions.httpsCallable(name).call(data);
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+}
 
 /// Dịch vụ tương tác với Cloud Firestore cho ứng dụng Đấu giá trực tuyến.
 class FirebaseService {
@@ -19,9 +39,15 @@ class FirebaseService {
   }
 
   final FirebaseFirestore? _customFirestore;
+  final FirebaseFunctions? _customFunctions;
+  final AuctionCallableClient? _customCallables;
 
   FirebaseFirestore get _firestore =>
       _customFirestore ?? FirebaseFirestore.instance;
+  FirebaseFunctions get _functions =>
+      _customFunctions ?? FirebaseFunctions.instance;
+  AuctionCallableClient get _callables =>
+      _customCallables ?? _FirebaseAuctionCallableClient(_functions);
 
   /// Kiểm tra xem Firebase đã được khởi tạo hay chưa
   static bool get isFirebaseInitialized => Firebase.apps.isNotEmpty;
@@ -35,8 +61,13 @@ class FirebaseService {
   /// Singleton instance
   static final FirebaseService instance = FirebaseService();
 
-  FirebaseService({FirebaseFirestore? firestore})
-    : _customFirestore = firestore;
+  FirebaseService({
+    FirebaseFirestore? firestore,
+    FirebaseFunctions? functions,
+    AuctionCallableClient? callables,
+  }) : _customFirestore = firestore,
+       _customFunctions = functions,
+       _customCallables = callables;
 
   // ===========================================================================
   // 1. NGHIỆP VỤ SẢN PHẨM (ITEMS)
@@ -96,108 +127,26 @@ class FirebaseService {
   // 2. NGHIỆP VỤ ĐẶT GIÁ (PLACE BID) - KIỂM TRA LOGIC GIÁ
   // ===========================================================================
 
-  /// Hàm đặt giá mới có kiểm tra logic giá (placeBid).
-  /// Sử dụng `Firestore Transaction` để xử lý tranh chấp (concurrency):
-  /// - Kiểm tra phiên đấu giá có tồn tại và đang diễn ra hay không.
-  /// - KIỂM TRA LOGIC GIÁ: Giá mới [bid.bidAmount] BẮT BUỘC phải cao hơn giá hiện tại.
-  /// - Cập nhật đồng thời phiên đấu giá (giá cao nhất, người đặt) và lưu lượt đặt vào collection 'bids'.
+  /// Gửi lượt đặt giá tới Cloud Function; danh tính người đặt lấy từ token Auth.
   Future<void> placeBid({required String sessionId, required Bid bid}) async {
-    if (!bid.bidAmount.isFinite || bid.bidAmount <= 0) {
-      throw Exception('Giá đặt phải là số hợp lệ lớn hơn 0 VNĐ.');
+    if (sessionId.trim().isEmpty) {
+      throw ArgumentError('Mã phiên đấu giá không được để trống.');
+    }
+    if (bid.amount <= 0) {
+      throw ArgumentError('Giá đặt phải là số nguyên dương.');
     }
 
-    final sessionRef = _firestore.collection(sessionsCollection).doc(sessionId);
-    final bidAmount = bid.bidAmount;
-    final bidderId = bid.userId;
-    final bidId = bid.bidId > 0
-        ? bid.bidId
-        : DateTime.now().millisecondsSinceEpoch;
-    final bidTime = bid.bidTime.isEmpty
-        ? _formatBidTime(DateTime.now())
-        : bid.bidTime;
-    final bidRef = _firestore.collection(bidsCollection).doc();
-
-    final bidData = bid.toMap()
-      ..['bidId'] = bidId
-      ..['bidTime'] = bidTime
-      ..['sessionId'] = sessionId;
-    bidData['createdAt'] = FieldValue.serverTimestamp();
-
-    await _firestore.runTransaction((transaction) async {
-      // 1. Đọc dữ liệu phiên đấu giá trong transaction
-      final sessionDoc = await transaction.get(sessionRef);
-      if (!sessionDoc.exists || sessionDoc.data() == null) {
-        throw Exception('Phiên đấu giá "$sessionId" không tồn tại.');
-      }
-
-      final sessionData = sessionDoc.data()!;
-      if (sessionData['status'] != 'active') {
-        throw Exception('Phiên đấu giá không ở trạng thái cho phép đặt giá.');
-      }
-
-      final itemId = sessionData['itemId']?.toString() ?? '';
-      Map<String, dynamic>? itemData;
-      if (itemId.isNotEmpty) {
-        final itemDoc = await transaction.get(
-          _firestore.collection(itemsCollection).doc(itemId),
-        );
-        itemData = itemDoc.data();
-      }
-
-      if (_isSeller(sessionData, bidderId) ||
-          (itemData != null && _isSeller(itemData, bidderId))) {
-        throw Exception(
-          'Người bán không thể tự đặt giá cho sản phẩm của mình.',
-        );
-      }
-
-      final double startingPrice =
-          (sessionData['startingPrice'] as num?)?.toDouble() ?? 0.0;
-      final double currentHighestBid =
-          (sessionData['currentHighestBid'] as num?)?.toDouble() ?? 0.0;
-
-      // Mức giá hiện tại tối thiểu cần vượt qua
-      final double currentThreshold = currentHighestBid > 0
-          ? currentHighestBid
-          : startingPrice;
-
-      // 2. Kiểm tra logic giá: Giá đặt mới phải lớn hơn giá hiện tại
-      if (bidAmount <= currentThreshold) {
-        throw Exception(
-          'Giá đặt (${bidAmount.toStringAsFixed(0)} VNĐ) phải cao hơn mức giá hiện tại (${currentThreshold.toStringAsFixed(0)} VNĐ).',
-        );
-      }
-
-      // 4. Cập nhật phiên đấu giá và lưu lượt đặt giá đồng thời
-      transaction.update(sessionRef, {
-        'currentHighestBid': bidAmount,
-        'highestBidderId': bidderId.toString(),
-      });
-
-      transaction.set(bidRef, bidData);
+    final data = await _callables.call('placeBid', {
+      'sessionId': sessionId.trim(),
+      'amount': bid.amount,
     });
-
     bid
-      ..sessionId = sessionId
-      ..bidId = bidId
-      ..bidTime = bidTime;
-  }
-
-  String _formatBidTime(DateTime time) {
-    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} ${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year}';
-  }
-
-  bool _isSeller(Map<String, dynamic> data, int bidderId) {
-    const sellerFields = [
-      'sellerUid',
-      'sellerId',
-      'seller_id',
-      'ownerId',
-      'owner_id',
-    ];
-    return sellerFields.any(
-      (field) => data[field]?.toString().trim() == bidderId.toString(),
-    );
+      ..sessionId = sessionId.trim()
+      ..documentId = data['bidId'] as String? ?? ''
+      ..bidderUid = data['bidderUid'] as String? ?? ''
+      ..bidTime = data['bidTime'] as String? ?? '';
+    final parsedId = int.tryParse(data['bidId'] as String? ?? '');
+    if (parsedId != null) bid.bidId = parsedId;
   }
 
   // ===========================================================================
@@ -273,34 +222,37 @@ class FirebaseService {
     });
   }
 
-  /// Tạo một phiên đấu giá mới trên Firestore.
+  /// Tạo phiên qua Cloud Function, nơi xác thực quyền sở hữu và khởi tạo dữ liệu.
   Future<String> createAuctionSession(AuctionSession session) async {
-    final collection = _firestore.collection(sessionsCollection);
-
-    DocumentReference docRef;
-    if (session.sessionId.isNotEmpty) {
-      docRef = collection.doc(session.sessionId);
-    } else {
-      docRef = collection.doc();
-      session.sessionId = docRef.id;
+    if (session.itemId.trim().isEmpty ||
+        session.startingPrice <= 0 ||
+        session.minimumIncrement <= 0) {
+      throw ArgumentError('Thông tin phiên đấu giá không hợp lệ.');
+    }
+    final startTime = DateTime.tryParse(session.startTime);
+    final endTime = DateTime.tryParse(session.endTime);
+    if (startTime == null || endTime == null || !endTime.isAfter(startTime)) {
+      throw ArgumentError('Thời gian phiên phải là ISO-8601 hợp lệ.');
     }
 
-    if (session.currentHighestBid <= 0) {
-      session.currentHighestBid = session.startingPrice;
-    }
-
-    final batch = _firestore.batch();
-    batch.set(docRef, session.toMap(), SetOptions(merge: true));
-
-    if (session.itemId.isNotEmpty) {
-      final itemRef = _firestore
-          .collection(itemsCollection)
-          .doc(session.itemId);
-      batch.set(itemRef, {'status': 'in_auction'}, SetOptions(merge: true));
-    }
-
-    await batch.commit();
+    final data = await _callables.call('createAuctionSession', {
+      'itemId': session.itemId,
+      'startingPrice': session.startingPrice,
+      'minimumIncrement': session.minimumIncrement,
+      'startTime': startTime.toUtc().toIso8601String(),
+      'endTime': endTime.toUtc().toIso8601String(),
+    });
+    session
+      ..sessionId = data['sessionId'] as String
+      ..sellerUid = data['sellerUid'] as String
+      ..status = 'scheduled'
+      ..currentHighestBid = 0
+      ..highestBidderUid = null;
     return session.sessionId;
+  }
+
+  Future<void> cancelAuctionSession(String sessionId) async {
+    await _callables.call('cancelAuctionSession', {'sessionId': sessionId});
   }
 
   // ===========================================================================
@@ -309,17 +261,19 @@ class FirebaseService {
 
   /// Lưu hoặc cập nhật thông tin User trên Firestore.
   Future<void> saveUserProfile(User user) async {
-    final docRef = _firestore
-        .collection(usersCollection)
-        .doc(user.id.toString());
+    final uid = user.firebaseUid;
+    if (uid == null || uid.isEmpty) {
+      throw ArgumentError('Hồ sơ phải được liên kết với Firebase UID.');
+    }
+    final docRef = _firestore.collection(usersCollection).doc(uid);
     await docRef.set(user.toMap(), SetOptions(merge: true));
   }
 
-  /// Lấy thông tin User theo [userId].
-  Future<User?> getUserProfile(int userId) async {
+  /// Lấy thông tin User theo Firebase Authentication [uid].
+  Future<User?> getUserProfile(String uid) async {
     final docSnapshot = await _firestore
         .collection(usersCollection)
-        .doc(userId.toString())
+        .doc(uid)
         .get();
 
     if (!docSnapshot.exists || docSnapshot.data() == null) {

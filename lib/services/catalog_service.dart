@@ -17,8 +17,7 @@ class CatalogService {
   /// Singleton instance mặc định
   static final CatalogService instance = CatalogService();
 
-  CatalogService({FirebaseFirestore? firestore})
-      : _customFirestore = firestore;
+  CatalogService({FirebaseFirestore? firestore}) : _customFirestore = firestore;
 
   // ===========================================================================
   // 1. NGHIỆP VỤ DANH MỤC (CATEGORIES)
@@ -26,10 +25,9 @@ class CatalogService {
 
   /// Lắng nghe danh sách toàn bộ danh mục theo thời gian thực (Stream).
   Stream<List<Category>> getCategoriesStream() {
-    return _firestore
-        .collection(categoriesCollection)
-        .snapshots()
-        .map((snapshot) {
+    return _firestore.collection(categoriesCollection).snapshots().map((
+      snapshot,
+    ) {
       final list = snapshot.docs
           .map((doc) => Category.fromMap(doc.data(), doc.id))
           .toList();
@@ -119,8 +117,9 @@ class CatalogService {
     }
 
     final snapshot = await query.get();
-    final items =
-        snapshot.docs.map((doc) => Item.fromMap(doc.data(), doc.id)).toList();
+    final items = snapshot.docs
+        .map((doc) => Item.fromMap(doc.data(), doc.id))
+        .toList();
     items.sort((a, b) => a.id.compareTo(b.id));
     return items;
   }
@@ -143,8 +142,9 @@ class CatalogService {
   /// Thêm mới hoặc cập nhật toàn bộ thông tin sản phẩm.
   Future<void> saveItem(Item item) async {
     validateItem(item);
-    final docRef =
-        _firestore.collection(itemsCollection).doc(item.id.toString());
+    final docRef = _firestore
+        .collection(itemsCollection)
+        .doc(item.id.toString());
     await docRef.set(item.toMap(), SetOptions(merge: true));
   }
 
@@ -160,10 +160,9 @@ class CatalogService {
       );
     }
 
-    await _firestore
-        .collection(itemsCollection)
-        .doc(itemId.toString())
-        .update({'status': status});
+    await _firestore.collection(itemsCollection).doc(itemId.toString()).update({
+      'status': status,
+    });
   }
 
   /// Gán hoặc gỡ danh mục cho sản phẩm.
@@ -175,8 +174,9 @@ class CatalogService {
       throw ArgumentError('Mã danh mục (categoryId) phải lớn hơn 0.');
     }
 
-    final docRef =
-        _firestore.collection(itemsCollection).doc(itemId.toString());
+    final docRef = _firestore
+        .collection(itemsCollection)
+        .doc(itemId.toString());
     if (categoryId == null) {
       await docRef.update({'categoryId': FieldValue.delete()});
     } else {
@@ -223,8 +223,10 @@ class CatalogService {
     if (item.itemName.trim().isEmpty) {
       throw ArgumentError('Tên sản phẩm (itemName) không được để trống.');
     }
-    if (!item.startingPrice.isFinite || item.startingPrice <= 0) {
-      throw ArgumentError('Giá khởi điểm (startingPrice) phải lớn hơn 0.');
+    if (item.startingPrice <= 0) {
+      throw ArgumentError(
+        'Giá khởi điểm (startingPrice) phải là số nguyên dương.',
+      );
     }
     if (!validItemStatuses.contains(item.status)) {
       throw ArgumentError(

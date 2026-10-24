@@ -1,90 +1,168 @@
 import 'package:flutter/material.dart';
 
-class ContactPage extends StatelessWidget {
+import 'services/auth_service.dart';
+import 'services/firebase_service.dart';
+import 'user.dart';
+
+class ContactPage extends StatefulWidget {
   const ContactPage({super.key});
 
   @override
+  State<ContactPage> createState() => _ContactPageState();
+}
+
+class _ContactPageState extends State<ContactPage> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _fullnameController = TextEditingController();
+  late final AuthService _auth;
+  bool _registering = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (FirebaseService.isFirebaseInitialized) {
+      _auth = AuthService();
+    }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    _fullnameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      if (_registering) {
+        await _auth.register(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          fullname: _fullnameController.text.trim(),
+        );
+      } else {
+        await _auth.signIn(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Tài Khoản & Cá Nhân',
-          style: TextStyle(color: Colors.black),
+    if (!FirebaseService.isFirebaseInitialized) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Tài Khoản & Cá Nhân')),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Firebase chưa được khởi tạo. Đăng nhập và các thao tác backend '
+              'chỉ khả dụng sau khi cấu hình Firebase.',
+              textAlign: TextAlign.center,
+            ),
+          ),
         ),
-        backgroundColor: Colors.grey[300],
-        centerTitle: true,
-        elevation: 0,
-      ),
-      body: Column(
+      );
+    }
+
+    return StreamBuilder<User?>(
+      stream: _auth.authStateChanges,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _messageScreen(
+            'Không thể tải hồ sơ Firebase: ${snapshot.error}',
+          );
+        }
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final user = snapshot.data;
+        if (user == null) return _buildAuthenticationForm();
+        return _buildProfile(user);
+      },
+    );
+  }
+
+  Widget _buildAuthenticationForm() {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Tài Khoản & Cá Nhân')),
+      body: ListView(
+        padding: const EdgeInsets.all(24),
         children: [
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.all(16.0),
-            padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 16.0),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.black, width: 1.5),
-              borderRadius: BorderRadius.circular(4.0),
-            ),
-            child: const Text(
-              'Thành viên 3: Nguyễn Văn Vinh card',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-            ),
+          Text(
+            _registering ? 'Tạo tài khoản' : 'Đăng nhập',
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.black, width: 1.5),
-                    color: Colors.grey[300],
-                  ),
-                  child: const Icon(Icons.person_outline, size: 50, color: Colors.black),
-                ),
-                const SizedBox(width: 16),
-                const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Họ Tên Người Dùng',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Số dư ví: Y VNĐ',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ],
-                ),
-              ],
+          const SizedBox(height: 16),
+          if (_registering) ...[
+            TextField(
+              controller: _fullnameController,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'Họ và tên'),
             ),
+            const SizedBox(height: 12),
+          ],
+          TextField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(labelText: 'Email'),
           ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _passwordController,
+            obscureText: true,
+            onSubmitted: (_) {
+              if (!_busy) _submit();
+            },
+            decoration: const InputDecoration(labelText: 'Mật khẩu'),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(_error!, style: const TextStyle(color: Colors.red)),
+          ],
           const SizedBox(height: 20),
-          Expanded(
-            child: ListView(
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _buildMenuItem('Lịch sử giao dịch'),
-                _buildMenuItem('Vật phẩm đã thắng'),
-                _buildMenuItem('Cài đặt tài khoản'),
-              ],
+          FilledButton(
+            onPressed: _busy ? null : _submit,
+            child: Text(
+              _busy
+                  ? 'Đang xử lý...'
+                  : _registering
+                  ? 'Đăng ký'
+                  : 'Đăng nhập',
             ),
           ),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12.0),
-            decoration: const BoxDecoration(
-              border: Border(
-                top: BorderSide(color: Colors.black, width: 1.5),
-                bottom: BorderSide(color: Colors.black, width: 1.5),
-              ),
-            ),
-            child: const Text(
-              'Phenikaa University, Nguyễn Văn Vinh',
-              style: TextStyle(fontSize: 16),
+          TextButton(
+            onPressed: _busy
+                ? null
+                : () => setState(() {
+                    _registering = !_registering;
+                    _error = null;
+                  }),
+            child: Text(
+              _registering
+                  ? 'Đã có tài khoản? Đăng nhập'
+                  : 'Chưa có tài khoản? Đăng ký',
             ),
           ),
         ],
@@ -92,17 +170,42 @@ class ContactPage extends StatelessWidget {
     );
   }
 
-  Widget _buildMenuItem(String title) {
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          top: BorderSide(color: Colors.black, width: 1.0),
-          bottom: BorderSide(color: Colors.black, width: 1.0),
-        ),
+  Widget _buildProfile(User user) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Tài Khoản & Cá Nhân')),
+      body: ListView(
+        children: [
+          ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+            title: Text(user.fullname.isEmpty ? 'Người dùng' : user.fullname),
+            subtitle: Text(user.email),
+          ),
+          ListTile(
+            title: const Text('UID tài khoản'),
+            subtitle: Text(user.firebaseUid ?? ''),
+          ),
+          const Divider(),
+          const ListTile(title: Text('Lịch sử giao dịch')),
+          const ListTile(title: Text('Vật phẩm đã thắng')),
+          const ListTile(title: Text('Cài đặt tài khoản')),
+          ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Đăng xuất'),
+            onTap: _auth.signOut,
+          ),
+        ],
       ),
-      child: ListTile(
-        title: Text(title, style: const TextStyle(fontSize: 16)),
-        onTap: () {},
+    );
+  }
+
+  Widget _messageScreen(String message) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Tài Khoản & Cá Nhân')),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(message, textAlign: TextAlign.center),
+        ),
       ),
     );
   }

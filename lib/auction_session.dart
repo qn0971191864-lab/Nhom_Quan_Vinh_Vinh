@@ -2,18 +2,27 @@
 
 import 'project_model.dart';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Phiên đấu giá – ánh xạ tới collection "auction_sessions" trên Firestore.
 class AuctionSession extends ProjectModel<String> {
   String sessionId = 'P001';
   String itemId = '';
-  double startingPrice = 0;
-  double currentHighestBid = 0;
-  String highestBidderId = '';
+  String sellerUid = '';
+  int startingPrice = 0;
+  int minimumIncrement = 1;
+  int currentHighestBid = 0;
+  String? highestBidderUid;
   String startTime = '08:00 26/04/2026';
   String endTime = '12:00 26/04/2026';
+  String? result;
 
-  /// Trạng thái phiên: 'upcoming', 'active', 'ended'
-  String status = 'upcoming';
+  /// Trạng thái phiên: 'scheduled', 'active', 'ended', 'cancelled'
+  String status = 'scheduled';
+
+  String get highestBidderId => highestBidderUid ?? '';
+  set highestBidderId(String value) =>
+      highestBidderUid = value.isEmpty ? null : value;
 
   @override
   String get id => sessionId;
@@ -31,18 +40,21 @@ class AuctionSession extends ProjectModel<String> {
   AuctionSession({
     this.sessionId = 'P001',
     this.itemId = '',
+    this.sellerUid = '',
     this.startingPrice = 0,
+    this.minimumIncrement = 1,
     this.currentHighestBid = 0,
-    this.highestBidderId = '',
+    this.highestBidderUid,
     this.startTime = '08:00 26/04/2026',
     this.endTime = '12:00 26/04/2026',
-    this.status = 'upcoming',
+    this.result,
+    this.status = 'scheduled',
   });
 
   void setSession(
     String sessionId,
     String itemId,
-    double startingPrice,
+    int startingPrice,
     String startTime,
     String endTime,
     String status,
@@ -78,36 +90,58 @@ class AuctionSession extends ProjectModel<String> {
   /// Chuyển đối tượng AuctionSession thành Map để lưu lên Cloud Firestore.
   Map<String, dynamic> toMap() {
     return {
-      'sessionId': sessionId,
       'itemId': itemId,
+      'sellerUid': sellerUid,
       'startingPrice': startingPrice,
+      'minimumIncrement': minimumIncrement,
       'currentHighestBid': currentHighestBid,
-      'highestBidderId': highestBidderId,
-      'startTime': startTime,
-      'endTime': endTime,
-      'status': status,
+      'highestBidderUid': highestBidderUid,
+      'startTime': Timestamp.fromDate(_parseDateTime(startTime, 'startTime')),
+      'endTime': Timestamp.fromDate(_parseDateTime(endTime, 'endTime')),
+      'status': status == 'upcoming' ? 'scheduled' : status,
+      'result': result,
     };
   }
 
   /// Tạo đối tượng AuctionSession từ Map và Document ID đọc được từ Cloud Firestore.
   factory AuctionSession.fromMap(Map<String, dynamic> map, [String id = '']) {
+    final storedStatus = map['status'] as String? ?? 'scheduled';
     return AuctionSession(
-      sessionId: id.isNotEmpty
-          ? id
-          : (map['sessionId'] as String? ?? 'P001'),
+      sessionId: id.isNotEmpty ? id : (map['sessionId'] as String? ?? 'P001'),
       itemId: map['itemId'] as String? ?? '',
-      startingPrice: (map['startingPrice'] as num?)?.toDouble() ?? 0.0,
-      currentHighestBid: (map['currentHighestBid'] as num?)?.toDouble() ?? 0.0,
-      highestBidderId: map['highestBidderId'] as String? ?? '',
-      startTime: map['startTime'] as String? ?? '08:00 26/04/2026',
-      endTime: map['endTime'] as String? ?? '12:00 26/04/2026',
-      status: map['status'] as String? ?? 'upcoming',
+      sellerUid: map['sellerUid'] as String? ?? '',
+      startingPrice: (map['startingPrice'] as num?)?.toInt() ?? 0,
+      minimumIncrement: (map['minimumIncrement'] as num?)?.toInt() ?? 1,
+      currentHighestBid: (map['currentHighestBid'] as num?)?.toInt() ?? 0,
+      highestBidderUid:
+          map['highestBidderUid'] as String? ??
+          map['highestBidderId'] as String?,
+      startTime: _dateTimeValue(map['startTime']) ?? '08:00 26/04/2026',
+      endTime: _dateTimeValue(map['endTime']) ?? '12:00 26/04/2026',
+      result: map['result'] as String?,
+      status: storedStatus == 'upcoming' ? 'scheduled' : storedStatus,
     );
+  }
+
+  static String? _dateTimeValue(Object? value) {
+    if (value is Timestamp) return value.toDate().toUtc().toIso8601String();
+    if (value is DateTime) return value.toUtc().toIso8601String();
+    return value as String?;
+  }
+
+  static DateTime _parseDateTime(String value, String field) {
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) {
+      throw FormatException('$field must be an ISO-8601 date/time.', value);
+    }
+    return parsed.toUtc();
   }
 
   @override
   void displayDetails() {
-    print('Phiên: $sessionId | Vật phẩm: $itemId | Bắt đầu: $startTime | Kết thúc: $endTime | Trạng thái: $status');
+    print(
+      'Phiên: $sessionId | Vật phẩm: $itemId | Bắt đầu: $startTime | Kết thúc: $endTime | Trạng thái: $status',
+    );
   }
 }
 
