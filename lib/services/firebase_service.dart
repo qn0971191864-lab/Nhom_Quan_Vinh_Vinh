@@ -7,18 +7,16 @@ import '../item.dart';
 import '../user.dart';
 import '../Category.dart';
 
-
-
 /// Dịch vụ tương tác với Cloud Firestore cho ứng dụng Đấu giá trực tuyến.
 class FirebaseService {
-
   /// Lấy danh sách danh mục (categories) theo dạng Stream.
   Stream<List<Category>> getCategoriesStream() {
     return _firestore.collection('categories').snapshots().map((snapshot) {
-              return snapshot.docs.map((doc) => Category.fromMap(doc.data(), doc.id)).toList();
+      return snapshot.docs
+          .map((doc) => Category.fromMap(doc.data(), doc.id))
+          .toList();
     });
   }
-
 
   final FirebaseFirestore? _customFirestore;
 
@@ -29,17 +27,16 @@ class FirebaseService {
   static bool get isFirebaseInitialized => Firebase.apps.isNotEmpty;
 
   /// Tên các collection trong Firestore
-static const String itemsCollection = 'items';
+  static const String itemsCollection = 'items';
   static const String sessionsCollection = 'auction_sessions';
   static const String bidsCollection = 'bids';
   static const String usersCollection = 'users';
-
 
   /// Singleton instance
   static final FirebaseService instance = FirebaseService();
 
   FirebaseService({FirebaseFirestore? firestore})
-      : _customFirestore = firestore;
+    : _customFirestore = firestore;
 
   // ===========================================================================
   // 1. NGHIỆP VỤ SẢN PHẨM (ITEMS)
@@ -64,11 +61,9 @@ static const String itemsCollection = 'items';
 
   /// Lấy chi tiết sản phẩm theo dạng Stream (getItemStream) dựa trên [itemId].
   Stream<Item?> getItemStream(String itemId) {
-    return _firestore
-        .collection(itemsCollection)
-        .doc(itemId)
-        .snapshots()
-        .map((doc) {
+    return _firestore.collection(itemsCollection).doc(itemId).snapshots().map((
+      doc,
+    ) {
       if (!doc.exists || doc.data() == null) {
         return null;
       }
@@ -78,8 +73,10 @@ static const String itemsCollection = 'items';
 
   /// Lấy thông tin chi tiết một sản phẩm một lần (Future).
   Future<Item?> getItemById(int itemId) async {
-    final docSnapshot =
-        await _firestore.collection(itemsCollection).doc(itemId.toString()).get();
+    final docSnapshot = await _firestore
+        .collection(itemsCollection)
+        .doc(itemId.toString())
+        .get();
 
     if (!docSnapshot.exists || docSnapshot.data() == null) {
       return null;
@@ -89,7 +86,9 @@ static const String itemsCollection = 'items';
 
   /// Thêm hoặc cập nhật sản phẩm lên Firestore.
   Future<void> addItem(Item item) async {
-    final docRef = _firestore.collection(itemsCollection).doc(item.id.toString());
+    final docRef = _firestore
+        .collection(itemsCollection)
+        .doc(item.id.toString());
     await docRef.set(item.toMap(), SetOptions(merge: true));
   }
 
@@ -102,12 +101,27 @@ static const String itemsCollection = 'items';
   /// - Kiểm tra phiên đấu giá có tồn tại và đang diễn ra hay không.
   /// - KIỂM TRA LOGIC GIÁ: Giá mới [bid.bidAmount] BẮT BUỘC phải cao hơn giá hiện tại.
   /// - Cập nhật đồng thời phiên đấu giá (giá cao nhất, người đặt) và lưu lượt đặt vào collection 'bids'.
-  Future<void> placeBid({
-    required String sessionId,
-    required Bid bid,
-  }) async {
+  Future<void> placeBid({required String sessionId, required Bid bid}) async {
+    if (!bid.bidAmount.isFinite || bid.bidAmount <= 0) {
+      throw Exception('Giá đặt phải là số hợp lệ lớn hơn 0 VNĐ.');
+    }
+
     final sessionRef = _firestore.collection(sessionsCollection).doc(sessionId);
+    final bidAmount = bid.bidAmount;
+    final bidderId = bid.userId;
+    final bidId = bid.bidId > 0
+        ? bid.bidId
+        : DateTime.now().millisecondsSinceEpoch;
+    final bidTime = bid.bidTime.isEmpty
+        ? _formatBidTime(DateTime.now())
+        : bid.bidTime;
     final bidRef = _firestore.collection(bidsCollection).doc();
+
+    final bidData = bid.toMap()
+      ..['bidId'] = bidId
+      ..['bidTime'] = bidTime
+      ..['sessionId'] = sessionId;
+    bidData['createdAt'] = FieldValue.serverTimestamp();
 
     await _firestore.runTransaction((transaction) async {
       // 1. Đọc dữ liệu phiên đấu giá trong transaction
@@ -117,11 +131,24 @@ static const String itemsCollection = 'items';
       }
 
       final sessionData = sessionDoc.data()!;
-      final String sessionStatus =
-          sessionData['status'] as String? ?? 'active';
+      if (sessionData['status'] != 'active') {
+        throw Exception('Phiên đấu giá không ở trạng thái cho phép đặt giá.');
+      }
 
-      if (sessionStatus == 'ended') {
-        throw Exception('Phiên đấu giá đã kết thúc, không thể đặt thêm giá.');
+      final itemId = sessionData['itemId']?.toString() ?? '';
+      Map<String, dynamic>? itemData;
+      if (itemId.isNotEmpty) {
+        final itemDoc = await transaction.get(
+          _firestore.collection(itemsCollection).doc(itemId),
+        );
+        itemData = itemDoc.data();
+      }
+
+      if (_isSeller(sessionData, bidderId) ||
+          (itemData != null && _isSeller(itemData, bidderId))) {
+        throw Exception(
+          'Người bán không thể tự đặt giá cho sản phẩm của mình.',
+        );
       }
 
       final double startingPrice =
@@ -130,39 +157,47 @@ static const String itemsCollection = 'items';
           (sessionData['currentHighestBid'] as num?)?.toDouble() ?? 0.0;
 
       // Mức giá hiện tại tối thiểu cần vượt qua
-      final double currentThreshold =
-          currentHighestBid > 0 ? currentHighestBid : startingPrice;
+      final double currentThreshold = currentHighestBid > 0
+          ? currentHighestBid
+          : startingPrice;
 
       // 2. Kiểm tra logic giá: Giá đặt mới phải lớn hơn giá hiện tại
-      if (bid.bidAmount <= currentThreshold) {
+      if (bidAmount <= currentThreshold) {
         throw Exception(
-          'Giá đặt (${bid.bidAmount.toStringAsFixed(0)} VNĐ) phải cao hơn mức giá hiện tại (${currentThreshold.toStringAsFixed(0)} VNĐ).',
+          'Giá đặt (${bidAmount.toStringAsFixed(0)} VNĐ) phải cao hơn mức giá hiện tại (${currentThreshold.toStringAsFixed(0)} VNĐ).',
         );
       }
 
-      // 3. Chuẩn hóa dữ liệu lượt đặt giá
-      bid.sessionId = sessionId;
-      if (bid.bidId <= 0) {
-        bid.bidId = DateTime.now().millisecondsSinceEpoch;
-      }
-      if (bid.bidTime.isEmpty) {
-        final now = DateTime.now();
-        bid.bidTime =
-            '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')} ${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
-      }
-
-      final bidData = bid.toMap();
-      bidData['createdAt'] = FieldValue.serverTimestamp();
-
       // 4. Cập nhật phiên đấu giá và lưu lượt đặt giá đồng thời
       transaction.update(sessionRef, {
-        'currentHighestBid': bid.bidAmount,
-        'highestBidderId': bid.userId.toString(),
-        'status': 'active',
+        'currentHighestBid': bidAmount,
+        'highestBidderId': bidderId.toString(),
       });
 
       transaction.set(bidRef, bidData);
     });
+
+    bid
+      ..sessionId = sessionId
+      ..bidId = bidId
+      ..bidTime = bidTime;
+  }
+
+  String _formatBidTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} ${time.day.toString().padLeft(2, '0')}/${time.month.toString().padLeft(2, '0')}/${time.year}';
+  }
+
+  bool _isSeller(Map<String, dynamic> data, int bidderId) {
+    const sellerFields = [
+      'sellerUid',
+      'sellerId',
+      'seller_id',
+      'ownerId',
+      'owner_id',
+    ];
+    return sellerFields.any(
+      (field) => data[field]?.toString().trim() == bidderId.toString(),
+    );
   }
 
   // ===========================================================================
@@ -177,18 +212,19 @@ static const String itemsCollection = 'items';
         .where('sessionId', isEqualTo: sessionId)
         .snapshots()
         .map((snapshot) {
-      final bids = snapshot.docs.map((doc) {
-        final data = doc.data();
-        return Bid.fromMap(data, doc.id);
-      }).toList();
+          final bids = snapshot.docs.map((doc) {
+            final data = doc.data();
+            return Bid.fromMap(data, doc.id);
+          }).toList();
 
-      bids.sort((a, b) => b.bidAmount.compareTo(a.bidAmount));
-      return bids;
-    });
+          bids.sort((a, b) => b.bidAmount.compareTo(a.bidAmount));
+          return bids;
+        });
   }
 
   /// Alias tương thích ngược cho getBidsStream
-  Stream<List<Bid>> getBidHistoryStream(String sessionId) => getBidsStream(sessionId);
+  Stream<List<Bid>> getBidHistoryStream(String sessionId) =>
+      getBidsStream(sessionId);
 
   /// Lấy danh sách lịch sử trả giá một lần (Future)
   Future<List<Bid>> getBidHistory(String sessionId) async {
@@ -216,9 +252,9 @@ static const String itemsCollection = 'items';
         .doc(sessionId)
         .snapshots()
         .map((doc) {
-      if (!doc.exists || doc.data() == null) return null;
-      return AuctionSession.fromMap(doc.data()!, doc.id);
-    });
+          if (!doc.exists || doc.data() == null) return null;
+          return AuctionSession.fromMap(doc.data()!, doc.id);
+        });
   }
 
   /// Lắng nghe danh sách tất cả các phiên đấu giá realtime.
@@ -257,7 +293,9 @@ static const String itemsCollection = 'items';
     batch.set(docRef, session.toMap(), SetOptions(merge: true));
 
     if (session.itemId.isNotEmpty) {
-      final itemRef = _firestore.collection(itemsCollection).doc(session.itemId);
+      final itemRef = _firestore
+          .collection(itemsCollection)
+          .doc(session.itemId);
       batch.set(itemRef, {'status': 'in_auction'}, SetOptions(merge: true));
     }
 
@@ -271,14 +309,18 @@ static const String itemsCollection = 'items';
 
   /// Lưu hoặc cập nhật thông tin User trên Firestore.
   Future<void> saveUserProfile(User user) async {
-    final docRef = _firestore.collection(usersCollection).doc(user.id.toString());
+    final docRef = _firestore
+        .collection(usersCollection)
+        .doc(user.id.toString());
     await docRef.set(user.toMap(), SetOptions(merge: true));
   }
 
   /// Lấy thông tin User theo [userId].
   Future<User?> getUserProfile(int userId) async {
-    final docSnapshot =
-        await _firestore.collection(usersCollection).doc(userId.toString()).get();
+    final docSnapshot = await _firestore
+        .collection(usersCollection)
+        .doc(userId.toString())
+        .get();
 
     if (!docSnapshot.exists || docSnapshot.data() == null) {
       return null;

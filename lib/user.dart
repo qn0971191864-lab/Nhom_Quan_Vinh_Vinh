@@ -5,6 +5,7 @@ import 'project_model.dart';
 class User extends ProjectModel<int> {
   @override
   int id = 1;
+  String? firebaseUid;
   String fullname = 'Phạm Quang Vinh';
   String email = 'vinh@example.com';
   String password = 'password123';
@@ -14,6 +15,7 @@ class User extends ProjectModel<int> {
 
   User({
     this.id = 1,
+    this.firebaseUid,
     this.fullname = 'Phạm Quang Vinh',
     this.email = 'vinh@example.com',
     this.password = 'password123',
@@ -52,6 +54,7 @@ class User extends ProjectModel<int> {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      if (firebaseUid != null) 'firebaseUid': firebaseUid,
       'fullname': fullname,
       'email': email,
       'role': role,
@@ -64,6 +67,7 @@ class User extends ProjectModel<int> {
   factory User.fromMap(Map<String, dynamic> map, [String id = '']) {
     return User(
       id: (map['id'] as num?)?.toInt() ?? int.tryParse(id) ?? 0,
+      firebaseUid: map['firebaseUid'] as String?,
       fullname: map['fullname'] as String? ?? (map['name'] as String? ?? ''),
       email: map['email'] as String? ?? '',
       password: '', // Password không được lưu trên Firestore
