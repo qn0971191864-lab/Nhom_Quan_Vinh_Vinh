@@ -2,7 +2,11 @@ const { initializeApp } = require('firebase-admin/app');
 const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
-const { isBidWindowOpen, minimumBidAmount } = require('./auction_logic');
+const {
+  auctionOutcome,
+  isBidWindowOpen,
+  minimumBidAmount,
+} = require('./auction_logic');
 
 initializeApp();
 
@@ -230,21 +234,66 @@ exports.updateAuctionStatuses = onSchedule('every 1 minutes', async () => {
       const latest = await transaction.get(sessionDoc.ref);
       if (!latest.exists) return;
       const session = latest.data();
-      if (!(session.startTime instanceof Timestamp) ||
-          !(session.endTime instanceof Timestamp)) return;
-      if (now.toMillis() >= session.endTime.toMillis()) {
-        transaction.update(sessionDoc.ref, {
-          status: 'ended',
-          result: session.highestBidderUid ? null : 'no_bids',
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } else if (now.toMillis() >= session.startTime.toMillis() &&
-          session.status === 'scheduled') {
-        transaction.update(sessionDoc.ref, {
-          status: 'active',
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+      if (session.status !== 'active' && session.status !== 'scheduled') return;
+
+      const endTime = session.endTime ?? session.end_time;
+      const startTime = session.startTime ?? session.start_time;
+      if (!(endTime instanceof Timestamp) || !(startTime instanceof Timestamp)) {
+        return;
       }
+      if (endTime.toMillis() > now.toMillis()) {
+        if (session.status === 'scheduled' && startTime.toMillis() <= now.toMillis()) {
+          transaction.update(sessionDoc.ref, {
+            status: 'active',
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+        return;
+      }
+
+      const currentHighestBid =
+        session.currentHighestBid ?? session.current_highest_bid ?? 0;
+      const highestBidderUid =
+        session.highestBidderUid ??
+        session.highest_bidder_uid ??
+        session.highestBidderId ??
+        null;
+      const outcome = auctionOutcome({
+        currentHighestBid,
+        highestBidderUid,
+      });
+      const itemId = session.itemId ?? session.item_id;
+      if (typeof itemId !== 'string' || itemId.length === 0) {
+        throw new Error(`Auction session ${sessionDoc.id} has no valid item ID.`);
+      }
+      const itemRef = items.doc(itemId);
+      const itemSnapshot = await transaction.get(itemRef);
+      if (!itemSnapshot.exists) {
+        throw new Error(
+          `Auction session ${sessionDoc.id} references missing item ${itemId}.`,
+        );
+      }
+
+      transaction.update(sessionDoc.ref, {
+        status: outcome.status,
+        result: outcome.result,
+        winnerUid: outcome.winnerUid,
+        winningBid: outcome.winningBid,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.update(itemRef, outcome.winnerUid
+        ? {
+          status: 'sold',
+          winnerUid: outcome.winnerUid,
+          soldPrice: outcome.winningBid,
+          auctionSessionId: sessionDoc.id,
+        }
+        : {
+          status: 'available',
+          winnerUid: FieldValue.delete(),
+          soldPrice: FieldValue.delete(),
+          auctionSessionId: FieldValue.delete(),
+        });
     }),
   ));
 });

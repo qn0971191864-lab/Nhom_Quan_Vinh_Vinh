@@ -6,23 +6,23 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class User extends ProjectModel<int> {
   @override
-  int id = 1;
+  int id = 0;
   String? firebaseUid;
-  String fullname = 'Phạm Quang Vinh';
-  String email = 'vinh@example.com';
-  String password = 'password123';
+  String fullname = '';
+  String email = '';
+  String password = '';
   String role = 'USER';
-  String avatar = 'avatar.png';
+  String avatar = '';
   String createdAt = DateTime.now().toUtc().toIso8601String();
 
   User({
-    this.id = 1,
+    this.id = 0,
     this.firebaseUid,
-    this.fullname = 'Phạm Quang Vinh',
-    this.email = 'vinh@example.com',
-    this.password = 'password123',
+    this.fullname = '',
+    this.email = '',
+    this.password = '',
     this.role = 'USER',
-    this.avatar = 'avatar.png',
+    this.avatar = '',
     String? createdAt,
   }) : createdAt = createdAt ?? DateTime.now().toUtc().toIso8601String();
 

@@ -1,15 +1,11 @@
 import 'project_model.dart';
 
 class Category extends ProjectModel<int> {
-  int categoryId = 1;
-  String categoryName = 'Đồ điện tử';
-  String iconUrl = 'electronics.png';
+  int categoryId = 0;
+  String categoryName = '';
+  String iconUrl = '';
 
-  Category({
-    this.categoryId = 1,
-    this.categoryName = 'Đồ điện tử',
-    this.iconUrl = 'electronics.png',
-  });
+  Category({this.categoryId = 0, this.categoryName = '', this.iconUrl = ''});
 
   @override
   int get id => categoryId;
@@ -27,7 +23,9 @@ class Category extends ProjectModel<int> {
   @override
   void displayDetails() {
     // ignore: avoid_print
-    print('Mã danh mục: $categoryId - Tên danh mục: $categoryName - Icon URL: $iconUrl');
+    print(
+      'Mã danh mục: $categoryId - Tên danh mục: $categoryName - Icon URL: $iconUrl',
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -42,7 +40,9 @@ class Category extends ProjectModel<int> {
   }
 
   factory Category.fromMap(Map<String, dynamic> map, [String id = '']) {
-    int parsedId = (map['categoryId'] as num?)?.toInt() ?? (id.isNotEmpty ? int.tryParse(id) ?? 0 : 0);
+    int parsedId =
+        (map['categoryId'] as num?)?.toInt() ??
+        (id.isNotEmpty ? int.tryParse(id) ?? 0 : 0);
     return Category(
       categoryId: parsedId,
       categoryName: map['categoryName'] as String? ?? '',
@@ -50,4 +50,3 @@ class Category extends ProjectModel<int> {
     );
   }
 }
-

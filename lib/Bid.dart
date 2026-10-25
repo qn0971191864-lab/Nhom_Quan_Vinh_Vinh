@@ -5,9 +5,9 @@ import 'project_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Bid extends ProjectModel<int> {
-  int bidId = 1;
+  int bidId = 0;
   String documentId = '';
-  int amount = 2500000;
+  int amount = 0;
   String bidTime = '';
 
   /// Legacy UI identifier; never serialized or trusted for auction writes.
@@ -24,7 +24,7 @@ class Bid extends ProjectModel<int> {
   set bidAmount(int value) => amount = value;
 
   Bid({
-    this.bidId = 1,
+    this.bidId = 0,
     this.documentId = '',
     int? bidAmount,
     int? amount,
@@ -32,7 +32,7 @@ class Bid extends ProjectModel<int> {
     this.userId = 0,
     this.bidderUid = '',
     this.sessionId = '',
-  }) : amount = amount ?? bidAmount ?? 2500000;
+  }) : amount = amount ?? bidAmount ?? 0;
 
   void setBid(int bidId, int bidAmount, String bidTime) {
     this.bidId = bidId;
