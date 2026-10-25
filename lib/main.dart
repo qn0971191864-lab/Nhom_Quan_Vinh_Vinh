@@ -13,16 +13,20 @@ void main() async {
     messagingSenderId: "230200001665",
     projectId: "app-dau-gia-36729",
   );
+  Object? initializationError;
   try {
     await Firebase.initializeApp(options: firebaseOptions);
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
+    initializationError = e;
   }
-  runApp(const MyApp());
+  runApp(MyApp(firebaseInitializationError: initializationError));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.firebaseInitializationError});
+
+  final Object? firebaseInitializationError;
 
   @override
   Widget build(BuildContext context) {
@@ -32,8 +36,31 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const _AppNavigationShell(),
+      home: firebaseInitializationError == null
+          ? const _AppNavigationShell()
+          : _FirebaseUnavailablePage(error: firebaseInitializationError!),
       debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+class _FirebaseUnavailablePage extends StatelessWidget {
+  const _FirebaseUnavailablePage({required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Không thể kết nối Firebase. Dữ liệu trực tiếp không khả dụng.\n\n$error',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -57,10 +84,7 @@ class _AppNavigationShellState extends State<_AppNavigationShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: _pages),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) {

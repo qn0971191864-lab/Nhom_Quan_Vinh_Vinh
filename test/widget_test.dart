@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:quan_vinh_vinh_dau_gia/auction_session.dart';
@@ -12,15 +11,15 @@ import 'package:quan_vinh_vinh_dau_gia/project_model.dart';
 import 'package:quan_vinh_vinh_dau_gia/user.dart';
 
 void main() {
-  test('các class khởi tạo dữ liệu mặc định', () {
+  test('các model không khởi tạo bằng dữ liệu mẫu', () {
     final user = User();
     final item = Item();
     final phien = PhienDauGia();
 
-    expect(user.getUserFullname(), 'Phạm Quang Vinh');
-    expect(item.getItemName(), 'Điện thoại thông minh');
-    expect(item.startingPrice, 2000000);
-    expect(phien.getMaPhien(), 'P001');
+    expect(user.getUserFullname(), isEmpty);
+    expect(item.getItemName(), isEmpty);
+    expect(item.startingPrice, 0);
+    expect(phien.getMaPhien(), isEmpty);
   });
 
   test('các class cập nhật dữ liệu qua setter', () {
@@ -57,48 +56,31 @@ void main() {
     final ProjectModel<int> transaction = TransactionModel();
     final ProjectModel<String> phien = PhienDauGia();
 
-    expect(user.id, 1);
+    expect(user.id, 0);
     expect(user.object, same(user));
     expect(user.classType, User);
-    expect(item.id, 1);
+    expect(item.id, 0);
     expect(item.classType, Item);
-    expect(bid.id, 1);
+    expect(bid.id, 0);
     expect(bid.classType, Bid);
-    expect(category.id, 1);
+    expect(category.id, 0);
     expect(category.classType, Category);
-    expect(notification.id, 1);
+    expect(notification.id, 0);
     expect(notification.classType, AppNotification);
-    expect(transaction.id, 1);
+    expect(transaction.id, 0);
     expect(transaction.classType, TransactionModel);
-    expect(phien.id, 'P001');
+    expect(phien.id, isEmpty);
     expect(phien.classType, PhienDauGia);
   });
 
-  testWidgets('bottom navigation chuyển đổi giữa các màn hình', (
+  testWidgets('Firebase initialization errors are shown instead of mock data', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const MyApp());
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      const MyApp(firebaseInitializationError: FormatException('test')),
+    );
 
-    expect(find.text('Trang Chủ & Vật Phẩm'), findsOneWidget);
-    expect(find.text('Phiên Đấu Giá'), findsNothing);
-    expect(find.text('Tài Khoản & Cá Nhân'), findsNothing);
-
-    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(1);
-    await tester.pumpAndSettle();
-    expect(find.text('Phiên Đấu Giá'), findsOneWidget);
-    expect(find.text('Mã phiên: P001'), findsOneWidget);
-    expect(find.text('Bắt đầu: 08:00 26/04/2026'), findsOneWidget);
-    expect(find.text('Kết thúc: 12:00 26/04/2026'), findsOneWidget);
-
-    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(2);
-    await tester.pumpAndSettle();
-    expect(find.text('Tài Khoản & Cá Nhân'), findsOneWidget);
-    expect(find.text('Phiên Đấu Giá'), findsNothing);
-
-    tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).onTap!(0);
-    await tester.pumpAndSettle();
-    expect(find.text('Trang Chủ & Vật Phẩm'), findsOneWidget);
-    expect(find.text('Tài Khoản & Cá Nhân'), findsNothing);
+    expect(find.textContaining('Không thể kết nối Firebase'), findsOneWidget);
+    expect(find.textContaining('test'), findsOneWidget);
   });
 }

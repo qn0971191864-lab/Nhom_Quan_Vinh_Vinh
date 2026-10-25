@@ -6,18 +6,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Phiên đấu giá – ánh xạ tới collection "auction_sessions" trên Firestore.
 class AuctionSession extends ProjectModel<String> {
-  String sessionId = 'P001';
+  String sessionId = '';
   String itemId = '';
   String sellerUid = '';
   int startingPrice = 0;
   int minimumIncrement = 1;
   int currentHighestBid = 0;
   String? highestBidderUid;
-  String startTime = '08:00 26/04/2026';
-  String endTime = '12:00 26/04/2026';
+  String startTime = '';
+  String endTime = '';
   String? result;
 
-  /// Trạng thái phiên: 'scheduled', 'active', 'ended', 'cancelled'
+  /// Trạng thái phiên: 'scheduled', 'active', 'sold', 'ended', 'cancelled'
   String status = 'scheduled';
 
   String get highestBidderId => highestBidderUid ?? '';
@@ -38,15 +38,15 @@ class AuctionSession extends ProjectModel<String> {
   set thoiGianKetThuc(String value) => endTime = value;
 
   AuctionSession({
-    this.sessionId = 'P001',
+    this.sessionId = '',
     this.itemId = '',
     this.sellerUid = '',
     this.startingPrice = 0,
     this.minimumIncrement = 1,
     this.currentHighestBid = 0,
     this.highestBidderUid,
-    this.startTime = '08:00 26/04/2026',
-    this.endTime = '12:00 26/04/2026',
+    this.startTime = '',
+    this.endTime = '',
     this.result,
     this.status = 'scheduled',
   });
@@ -107,17 +107,28 @@ class AuctionSession extends ProjectModel<String> {
   factory AuctionSession.fromMap(Map<String, dynamic> map, [String id = '']) {
     final storedStatus = map['status'] as String? ?? 'scheduled';
     return AuctionSession(
-      sessionId: id.isNotEmpty ? id : (map['sessionId'] as String? ?? 'P001'),
-      itemId: map['itemId'] as String? ?? '',
-      sellerUid: map['sellerUid'] as String? ?? '',
-      startingPrice: (map['startingPrice'] as num?)?.toInt() ?? 0,
-      minimumIncrement: (map['minimumIncrement'] as num?)?.toInt() ?? 1,
-      currentHighestBid: (map['currentHighestBid'] as num?)?.toInt() ?? 0,
+      sessionId: id.isNotEmpty ? id : (map['sessionId'] as String? ?? ''),
+      itemId: map['itemId'] as String? ?? map['item_id'] as String? ?? '',
+      sellerUid:
+          map['sellerUid'] as String? ?? map['seller_uid'] as String? ?? '',
+      startingPrice:
+          (map['startingPrice'] as num?)?.toInt() ??
+          (map['starting_price'] as num?)?.toInt() ??
+          0,
+      minimumIncrement:
+          (map['minimumIncrement'] as num?)?.toInt() ??
+          (map['minimum_increment'] as num?)?.toInt() ??
+          1,
+      currentHighestBid:
+          (map['currentHighestBid'] as num?)?.toInt() ??
+          (map['current_highest_bid'] as num?)?.toInt() ??
+          0,
       highestBidderUid:
           map['highestBidderUid'] as String? ??
+          map['highest_bidder_uid'] as String? ??
           map['highestBidderId'] as String?,
-      startTime: _dateTimeValue(map['startTime']) ?? '08:00 26/04/2026',
-      endTime: _dateTimeValue(map['endTime']) ?? '12:00 26/04/2026',
+      startTime: _dateTimeValue(map['startTime'] ?? map['start_time']) ?? '',
+      endTime: _dateTimeValue(map['endTime'] ?? map['end_time']) ?? '',
       result: map['result'] as String?,
       status: storedStatus == 'upcoming' ? 'scheduled' : storedStatus,
     );

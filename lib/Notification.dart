@@ -3,10 +3,10 @@
 import 'project_model.dart';
 
 class AppNotification extends ProjectModel<int> {
-  int notificationId = 1;
-  String title = 'Xác nhận đấu giá';
-  String content = 'Bạn đã đặt giá thành công cho sản phẩm.';
-  String timestamp = '26/04/2026 10:35';
+  int notificationId = 0;
+  String title = '';
+  String content = '';
+  String timestamp = '';
 
   @override
   int get id => notificationId;
@@ -29,6 +29,8 @@ class AppNotification extends ProjectModel<int> {
 
   @override
   void displayDetails() {
-    print('Mã thông báo: $notificationId - Tiêu đề: $title - Nội dung: $content - Thời gian: $timestamp');
+    print(
+      'Mã thông báo: $notificationId - Tiêu đề: $title - Nội dung: $content - Thời gian: $timestamp',
+    );
   }
 }

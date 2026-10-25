@@ -19,10 +19,10 @@ class Item extends ProjectModel<int> {
   int? categoryId;
 
   Item({
-    this.id = 1,
-    this.itemName = 'Điện thoại thông minh',
-    this.startingPrice = 2000000,
-    this.description = 'Sản phẩm mới chính hãng',
+    this.id = 0,
+    this.itemName = '',
+    this.startingPrice = 0,
+    this.description = '',
     this.imageUrl = '',
     this.ownerUid,
     this.status = 'available',

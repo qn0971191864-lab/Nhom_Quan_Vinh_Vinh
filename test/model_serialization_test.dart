@@ -162,5 +162,29 @@ void main() {
       expect(session.currentHighestBid, 50000);
       expect(session.status, 'scheduled');
     });
+
+    test('fromMap accepts legacy snake_case auction fields', () {
+      final start = Timestamp.fromDate(DateTime.utc(2026, 10, 24));
+      final end = Timestamp.fromDate(DateTime.utc(2026, 10, 25));
+      final session = AuctionSession.fromMap({
+        'item_id': 'item-1',
+        'seller_uid': 'seller-1',
+        'starting_price': 100,
+        'minimum_increment': 10,
+        'current_highest_bid': 150,
+        'highest_bidder_uid': 'winner-1',
+        'start_time': start,
+        'end_time': end,
+      }, 'session-1');
+
+      expect(session.sessionId, 'session-1');
+      expect(session.itemId, 'item-1');
+      expect(session.sellerUid, 'seller-1');
+      expect(session.startingPrice, 100);
+      expect(session.minimumIncrement, 10);
+      expect(session.currentHighestBid, 150);
+      expect(session.highestBidderUid, 'winner-1');
+      expect(DateTime.parse(session.endTime).toUtc(), end.toDate().toUtc());
+    });
   });
 }

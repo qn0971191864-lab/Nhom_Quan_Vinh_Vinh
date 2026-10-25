@@ -3,19 +3,19 @@ import 'project_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TransactionModel extends ProjectModel<int> {
-  int transactionId = 1;
-  int amount = 500000;
-  String paymentMethod = 'Ví điện tử';
-  String status = 'Thành công';
+  int transactionId = 0;
+  int amount = 0;
+  String paymentMethod = '';
+  String status = '';
   int? userId; // foreign key to users (nullable for seed convenience)
   String? userUid;
   DateTime? createdAt;
 
   TransactionModel({
-    this.transactionId = 1,
-    this.amount = 500000,
-    this.paymentMethod = 'Ví điện tử',
-    this.status = 'Thành công',
+    this.transactionId = 0,
+    this.amount = 0,
+    this.paymentMethod = '',
+    this.status = '',
     this.userId,
     this.userUid,
     this.createdAt,

@@ -1,9 +1,41 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+  auctionOutcome,
   isBidWindowOpen,
   minimumBidAmount,
 } = require('../auction_logic');
+
+test('expired auction with bids records a winner and sold result', () => {
+  assert.deepEqual(
+    auctionOutcome({ currentHighestBid: 150, highestBidderUid: 'winner-1' }),
+    {
+      status: 'sold',
+      result: 'sold',
+      winnerUid: 'winner-1',
+      winningBid: 150,
+    },
+  );
+});
+
+test('expired auction without bids ends with no_bids', () => {
+  assert.deepEqual(
+    auctionOutcome({ currentHighestBid: 0, highestBidderUid: null }),
+    {
+      status: 'ended',
+      result: 'no_bids',
+      winnerUid: null,
+      winningBid: 0,
+    },
+  );
+});
+
+test('winning bid without a bidder UID is rejected', () => {
+  assert.throws(
+    () => auctionOutcome({ currentHighestBid: 150, highestBidderUid: null }),
+    TypeError,
+  );
+});
 
 test('first bid threshold is starting price', () => {
   assert.equal(
