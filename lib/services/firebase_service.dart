@@ -2,11 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 
-import '../Bid.dart';
+import '../bid.dart';
 import '../auction_session.dart';
 import '../item.dart';
 import '../user.dart';
-import '../Category.dart';
+import '../category.dart';
 
 abstract interface class AuctionCallableClient {
   Future<Map<String, dynamic>> call(String name, Map<String, dynamic> data);

@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../Category.dart';
+import '../category.dart';
 import '../item.dart';
 
 /// Dịch vụ quản lý Danh mục (Categories) và Sản phẩm (Items) trên Firestore.

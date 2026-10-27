@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:quan_vinh_vinh_dau_gia/Bid.dart';
+import 'package:quan_vinh_vinh_dau_gia/bid.dart';
 import 'package:quan_vinh_vinh_dau_gia/auction_session.dart';
 import 'package:quan_vinh_vinh_dau_gia/user.dart';
 
