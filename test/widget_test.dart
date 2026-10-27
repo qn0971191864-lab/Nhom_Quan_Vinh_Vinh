@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:quan_vinh_vinh_dau_gia/auction_session.dart';
-import 'package:quan_vinh_vinh_dau_gia/Bid.dart';
-import 'package:quan_vinh_vinh_dau_gia/Category.dart';
+import 'package:quan_vinh_vinh_dau_gia/bid.dart';
+import 'package:quan_vinh_vinh_dau_gia/category.dart';
 import 'package:quan_vinh_vinh_dau_gia/item.dart';
-import 'package:quan_vinh_vinh_dau_gia/Notification.dart';
-import 'package:quan_vinh_vinh_dau_gia/Transaction.dart';
+import 'package:quan_vinh_vinh_dau_gia/notification.dart';
+import 'package:quan_vinh_vinh_dau_gia/transaction.dart';
 import 'package:quan_vinh_vinh_dau_gia/main.dart';
 import 'package:quan_vinh_vinh_dau_gia/project_model.dart';
 import 'package:quan_vinh_vinh_dau_gia/user.dart';

@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../Transaction.dart';
+import '../transaction.dart';
 
 /// Dịch vụ quản lý bản ghi lịch sử giao dịch (Transactions) trên Cloud Firestore.
 /// Lưu ý: Chỉ lưu/đọc và cập nhật trạng thái bản ghi giao dịch, không giả lập

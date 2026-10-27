@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'Bid.dart';
+import 'bid.dart';
 import 'auction_session.dart';
 import 'item.dart';
 import 'services/firebase_service.dart';

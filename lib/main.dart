@@ -33,8 +33,48 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Ứng dụng Đấu giá Trực tuyến',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF14243A))
+            .copyWith(
+              primary: const Color(0xFF14243A),
+              secondary: const Color(0xFFC49A55),
+              surface: const Color(0xFFF5F6F8),
+            ),
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFF5F6F8),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF14243A),
+          foregroundColor: Colors.white,
+          centerTitle: false,
+          elevation: 0,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 14,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EB)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFE2E6EB)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0xFFC49A55), width: 1.5),
+          ),
+        ),
+        navigationBarTheme: const NavigationBarThemeData(
+          backgroundColor: Colors.white,
+          indicatorColor: Color(0xFFECE5D8),
+          elevation: 8,
+          labelTextStyle: WidgetStatePropertyAll(
+            TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+        ),
       ),
       home: firebaseInitializationError == null
           ? const _AppNavigationShell()
@@ -85,19 +125,29 @@ class _AppNavigationShellState extends State<_AppNavigationShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: _pages),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) {
           setState(() {
             _selectedIndex = index;
           });
         },
-        selectedItemColor: Colors.blueAccent,
-        unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Trang chủ'),
-          BottomNavigationBarItem(icon: Icon(Icons.gavel), label: 'Đấu giá'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Cá nhân'),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
+            label: 'Trang chủ',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.gavel_outlined),
+            selectedIcon: Icon(Icons.gavel_rounded),
+            label: 'Đấu giá',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded),
+            label: 'Tài khoản',
+          ),
         ],
       ),
     );

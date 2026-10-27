@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quan_vinh_vinh_dau_gia/Category.dart';
+import 'package:quan_vinh_vinh_dau_gia/category.dart';
 import 'package:quan_vinh_vinh_dau_gia/item.dart';
-import 'package:quan_vinh_vinh_dau_gia/Transaction.dart';
+import 'package:quan_vinh_vinh_dau_gia/transaction.dart';
 import 'package:quan_vinh_vinh_dau_gia/services/catalog_service.dart';
 import 'package:quan_vinh_vinh_dau_gia/services/transaction_service.dart';
 
