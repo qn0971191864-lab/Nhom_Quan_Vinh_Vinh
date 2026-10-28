@@ -2,8 +2,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'contact_page.dart';
+import 'create_auction_page.dart';
 import 'home_page.dart';
 import 'phien_dau_gia.dart';
+import 'transaction_history_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -118,6 +120,8 @@ class _AppNavigationShellState extends State<_AppNavigationShell> {
   final List<Widget> _pages = const [
     HomePage(),
     TrangDauGiaPage(),
+    CreateAuctionPage(),
+    TransactionHistoryPage(),
     ContactPage(),
   ];
 
@@ -142,6 +146,16 @@ class _AppNavigationShellState extends State<_AppNavigationShell> {
             icon: Icon(Icons.gavel_outlined),
             selectedIcon: Icon(Icons.gavel_rounded),
             label: 'Đấu giá',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.add_circle_outline_rounded),
+            selectedIcon: Icon(Icons.add_circle_rounded),
+            label: 'Tạo phiên',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long_rounded),
+            label: 'Giao dịch',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),

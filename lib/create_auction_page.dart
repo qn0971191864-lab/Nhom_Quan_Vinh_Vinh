@@ -1,0 +1,302 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import 'auction_session.dart';
+import 'item.dart';
+import 'services/firebase_service.dart';
+
+class CreateAuctionPage extends StatefulWidget {
+  const CreateAuctionPage({super.key});
+
+  @override
+  State<CreateAuctionPage> createState() => _CreateAuctionPageState();
+}
+
+class _CreateAuctionPageState extends State<CreateAuctionPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  final _imageController = TextEditingController();
+  final _priceController = TextEditingController();
+  final _incrementController = TextEditingController(text: '100000');
+  DateTime? _startTime;
+  DateTime? _endTime;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _imageController.dispose();
+    _priceController.dispose();
+    _incrementController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDateTime(bool isStart) async {
+    final initial = isStart
+        ? _startTime ?? DateTime.now().add(const Duration(hours: 1))
+        : _endTime ?? DateTime.now().add(const Duration(days: 1));
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (time == null || !mounted) return;
+    setState(() {
+      final selected = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+      if (isStart) {
+        _startTime = selected;
+      } else {
+        _endTime = selected;
+      }
+    });
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng đăng nhập để tạo phiên đấu giá.'),
+        ),
+      );
+      return;
+    }
+    if (_startTime == null || _endTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vui lòng chọn thời gian bắt đầu và kết thúc.'),
+        ),
+      );
+      return;
+    }
+    if (!_endTime!.isAfter(_startTime!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Thời gian kết thúc phải sau thời gian bắt đầu.'),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final price = int.parse(_priceController.text.trim());
+      final increment = int.parse(_incrementController.text.trim());
+      final itemId = DateTime.now().millisecondsSinceEpoch;
+      await FirebaseService.instance.addItem(
+        Item(
+          id: itemId,
+          itemName: _nameController.text.trim(),
+          startingPrice: price,
+          description: _descriptionController.text.trim(),
+          imageUrl: _imageController.text.trim(),
+          ownerUid: user.uid,
+          status: 'available',
+        ),
+      );
+      await FirebaseService.instance.createAuctionSession(
+        AuctionSession(
+          itemId: itemId.toString(),
+          startingPrice: price,
+          minimumIncrement: increment,
+          startTime: _startTime!.toUtc().toIso8601String(),
+          endTime: _endTime!.toUtc().toIso8601String(),
+          status: 'scheduled',
+        ),
+      );
+      if (!mounted) return;
+      _formKey.currentState!.reset();
+      _nameController.clear();
+      _descriptionController.clear();
+      _imageController.clear();
+      _priceController.clear();
+      _incrementController.text = '100000';
+      setState(() {
+        _startTime = null;
+        _endTime = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tạo phiên đấu giá thành công.')),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Không thể tạo phiên: $error')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!FirebaseService.isFirebaseInitialized) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Tạo phiên đấu giá')),
+        body: const Center(child: Text('Firebase chưa được khởi tạo.')),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Tạo phiên đấu giá')),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'Thông tin vật phẩm',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(
+                labelText: 'Tên vật phẩm',
+                prefixIcon: Icon(Icons.inventory_2_outlined),
+              ),
+              validator: (value) => value == null || value.trim().isEmpty
+                  ? 'Nhập tên vật phẩm'
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _descriptionController,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Mô tả',
+                prefixIcon: Icon(Icons.notes_outlined),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _imageController,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'Link hình ảnh (tuỳ chọn)',
+                prefixIcon: Icon(Icons.link),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Cấu hình đấu giá',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _priceController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Giá khởi điểm (VNĐ)',
+                prefixIcon: Icon(Icons.attach_money),
+              ),
+              validator: (value) {
+                final price = int.tryParse(value?.trim() ?? '');
+                return price == null || price <= 0 ? 'Giá không hợp lệ' : null;
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _incrementController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Bước giá tối thiểu (VNĐ)',
+                prefixIcon: Icon(Icons.trending_up),
+              ),
+              validator: (value) {
+                final increment = int.tryParse(value?.trim() ?? '');
+                return increment == null || increment <= 0
+                    ? 'Bước giá không hợp lệ'
+                    : null;
+              },
+            ),
+            const SizedBox(height: 12),
+            _timeTile(
+              icon: Icons.play_circle_outline,
+              title: 'Thời gian bắt đầu',
+              value: _startTime,
+              onTap: () => _pickDateTime(true),
+            ),
+            const SizedBox(height: 10),
+            _timeTile(
+              icon: Icons.stop_circle_outlined,
+              title: 'Thời gian kết thúc',
+              value: _endTime,
+              onTap: () => _pickDateTime(false),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: _busy ? null : _submit,
+              icon: _busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.gavel_rounded),
+              label: Text(_busy ? 'Đang tạo...' : 'Tạo phiên đấu giá'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _timeTile({
+    required IconData icon,
+    required String title,
+    required DateTime? value,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE2E6EB)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon),
+            const SizedBox(width: 12),
+            Expanded(child: Text(title)),
+            Text(
+              value == null ? 'Chọn' : _formatDate(value),
+              style: TextStyle(
+                color: value == null ? Colors.grey : Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime value) {
+    final local = value.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+}
