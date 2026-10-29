@@ -256,8 +256,71 @@ class FirebaseService {
   }
 
   // ===========================================================================
-  // 5. NGHIỆP VỤ NGƯỜI DÙNG (USER PROFILE)
+  // 5. NGHIỆP VỤ NGƯỜI DÙNG (USER PROFILE & DISPLAY NAME)
   // ===========================================================================
+
+  static final Map<String, String> _userDisplayNameCache = {};
+
+  /// Kiểm tra xem UID đã có tên hiển thị trong bộ nhớ đệm hay chưa
+  static bool isCachedDisplayName(String uid) =>
+      _userDisplayNameCache.containsKey(uid.trim());
+
+  /// Lấy tên hiển thị từ bộ nhớ đệm
+  static String? getCachedDisplayName(String uid) =>
+      _userDisplayNameCache[uid.trim()];
+
+  /// Gán tên hiển thị vào bộ nhớ đệm
+  static void setCachedDisplayName(String uid, String name) {
+    final trimmed = uid.trim();
+    if (trimmed.isNotEmpty) {
+      _userDisplayNameCache[trimmed] = name.trim();
+    }
+  }
+
+  /// Xóa bộ nhớ đệm tên hiển thị
+  static void clearDisplayNameCache() => _userDisplayNameCache.clear();
+
+  /// Rút gọn mã UID người dùng khi không tìm thấy thông tin profile
+  static String formatShortUid(String uid) {
+    final trimmed = uid.trim();
+    if (trimmed.isEmpty) return 'Người tham gia';
+    if (trimmed.length <= 8) return trimmed;
+    return '${trimmed.substring(0, 4)}...${trimmed.substring(trimmed.length - 4)}';
+  }
+
+  /// Lấy tên hiển thị của người dùng (ưu tiên: fullname > email > UID rút gọn).
+  Future<String> getUserDisplayName(String uid) async {
+    final trimmed = uid.trim();
+    if (trimmed.isEmpty) return 'Người tham gia';
+    if (_userDisplayNameCache.containsKey(trimmed)) {
+      return _userDisplayNameCache[trimmed]!;
+    }
+    if (!isFirebaseInitialized) {
+      final fallback = formatShortUid(trimmed);
+      _userDisplayNameCache[trimmed] = fallback;
+      return fallback;
+    }
+    try {
+      final user = await getUserProfile(trimmed);
+      if (user != null) {
+        String resolved = '';
+        if (user.fullname.trim().isNotEmpty) {
+          resolved = user.fullname.trim();
+        } else if (user.email.trim().isNotEmpty) {
+          resolved = user.email.trim();
+        }
+        if (resolved.isNotEmpty) {
+          _userDisplayNameCache[trimmed] = resolved;
+          return resolved;
+        }
+      }
+    } catch (_) {
+      // Fallback khi offline hoặc lỗi truy vấn
+    }
+    final fallback = formatShortUid(trimmed);
+    _userDisplayNameCache[trimmed] = fallback;
+    return fallback;
+  }
 
   /// Lưu hoặc cập nhật thông tin User trên Firestore.
   Future<void> saveUserProfile(User user) async {
@@ -267,6 +330,12 @@ class FirebaseService {
     }
     final docRef = _firestore.collection(usersCollection).doc(uid);
     await docRef.set(user.toMap(), SetOptions(merge: true));
+    // Cập nhật lại cache nếu profile thay đổi
+    if (user.fullname.trim().isNotEmpty) {
+      _userDisplayNameCache[uid] = user.fullname.trim();
+    } else if (user.email.trim().isNotEmpty) {
+      _userDisplayNameCache[uid] = user.email.trim();
+    }
   }
 
   /// Lấy thông tin User theo Firebase Authentication [uid].
