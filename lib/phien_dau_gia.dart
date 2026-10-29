@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
 import 'bid.dart';
@@ -16,11 +19,40 @@ class TrangDauGiaPage extends StatefulWidget {
 
 class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
   late String? _selectedSessionId;
+  late final StreamSubscription<firebase_auth.User?> _authSubscription;
+  bool _authReady = false;
+  bool _isSignedIn = false;
+  Object? _authError;
 
   @override
   void initState() {
     super.initState();
     _selectedSessionId = widget.sessionId;
+    _authSubscription = firebase_auth.FirebaseAuth.instance
+        .authStateChanges()
+        .listen(
+          (user) {
+            if (!mounted) return;
+            setState(() {
+              _authReady = true;
+              _isSignedIn = user != null;
+              _authError = null;
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (!mounted) return;
+            setState(() {
+              _authReady = true;
+              _authError = error;
+            });
+          },
+        );
+  }
+
+  @override
+  void dispose() {
+    unawaited(_authSubscription.cancel());
+    super.dispose();
   }
 
   @override
@@ -32,6 +64,21 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
             'Firebase chưa được khởi tạo. Không thể tải phiên đấu giá.',
           ),
         ),
+      );
+    }
+    if (!_authReady) {
+      return _scaffold(
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_authError != null) {
+      return _scaffold(
+        body: _message('Không thể kiểm tra đăng nhập: $_authError'),
+      );
+    }
+    if (!_isSignedIn) {
+      return _scaffold(
+        body: _message('Vui lòng đăng nhập để xem các phiên đấu giá.'),
       );
     }
     if (_selectedSessionId != null) {
@@ -153,7 +200,15 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
   }
 
   Widget _buildSession(AuctionSession session, Item? item) {
-    final canBid = session.status == 'active';
+    final now = DateTime.now();
+    final startTime = DateTime.tryParse(session.startTime);
+    final endTime = DateTime.tryParse(session.endTime);
+    final canBid =
+        (session.status == 'scheduled' || session.status == 'active') &&
+        startTime != null &&
+        endTime != null &&
+        !now.isBefore(startTime) &&
+        now.isBefore(endTime);
     return _scaffold(
       onBack: _backToSessions,
       body: ListView(
@@ -230,7 +285,13 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
           const SizedBox(height: 12),
           FilledButton(
             onPressed: canBid ? () => _handleQuickBid(session) : null,
-            child: Text(canBid ? 'Đặt giá nhanh' : 'Phiên không nhận đặt giá'),
+            child: Text(
+              canBid
+                  ? 'Đặt giá nhanh'
+                  : startTime != null && now.isBefore(startTime)
+                  ? 'Phiên chưa bắt đầu'
+                  : 'Phiên không nhận đặt giá',
+            ),
           ),
         ],
       ),
