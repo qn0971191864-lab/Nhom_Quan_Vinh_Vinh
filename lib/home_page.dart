@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
 import 'auction_session.dart';
@@ -17,8 +20,12 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _searchController = TextEditingController();
-  late final Stream<List<Item>> _itemsStream;
-  late final Stream<List<AuctionSession>> _sessionsStream;
+  late final StreamSubscription<firebase_auth.User?> _authSubscription;
+  Stream<List<Item>>? _itemsStream;
+  Stream<List<AuctionSession>>? _sessionsStream;
+  String? _streamUid;
+  Object? _authError;
+  bool _authReady = false;
   String _searchText = '';
   String _selectedFilter = 'Tất cả';
 
@@ -32,8 +39,34 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _itemsStream = FirebaseService.instance.getItemsStream();
-    _sessionsStream = FirebaseService.instance.getAuctionSessionsStream();
+    _authSubscription = firebase_auth.FirebaseAuth.instance
+        .authStateChanges()
+        .listen(
+          (user) {
+            if (!mounted) return;
+            setState(() {
+              _authReady = true;
+              _authError = null;
+              if (user == null) {
+                _streamUid = null;
+                _itemsStream = null;
+                _sessionsStream = null;
+              } else if (_streamUid != user.uid) {
+                _streamUid = user.uid;
+                _itemsStream = FirebaseService.instance.getItemsStream();
+                _sessionsStream =
+                    FirebaseService.instance.getAuctionSessionsStream();
+              }
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            if (!mounted) return;
+            setState(() {
+              _authReady = true;
+              _authError = error;
+            });
+          },
+        );
     _searchController.addListener(() {
       setState(() => _searchText = _searchController.text.trim().toLowerCase());
     });
@@ -41,6 +74,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    unawaited(_authSubscription.cancel());
     _searchController.dispose();
     super.dispose();
   }
@@ -93,6 +127,15 @@ class _HomePageState extends State<HomePage> {
       body: StreamBuilder<List<Item>>(
         stream: _itemsStream,
         builder: (context, itemSnapshot) {
+          if (!_authReady) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (_authError != null) {
+            return _message('Không thể kiểm tra đăng nhập: $_authError');
+          }
+          if (_itemsStream == null || _sessionsStream == null) {
+            return _message('Vui lòng đăng nhập để xem sản phẩm.');
+          }
           if (itemSnapshot.hasError) {
             return _message('Không thể tải sản phẩm: ${itemSnapshot.error}');
           }
