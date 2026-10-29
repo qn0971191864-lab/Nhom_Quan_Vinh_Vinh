@@ -11,6 +11,7 @@ void main() {
     setUp(() {
       callables = _FakeAuctionCallables();
       service = FirebaseService(callables: callables);
+      FirebaseService.clearDisplayNameCache();
     });
 
     test('validates bid amount before calling the trusted backend', () async {
@@ -103,6 +104,30 @@ void main() {
 
       expect(callables.calls.single.name, 'cancelAuctionSession');
       expect(callables.calls.single.data, {'sessionId': 'session-1'});
+    });
+
+    test('formatShortUid formats empty, short, and long UIDs correctly', () {
+      expect(FirebaseService.formatShortUid(''), 'Người tham gia');
+      expect(FirebaseService.formatShortUid('   '), 'Người tham gia');
+      expect(FirebaseService.formatShortUid('abc12345'), 'abc12345');
+      expect(
+        FirebaseService.formatShortUid('AfVuzcugHAY2VtgQbiUAyH7HOZG3'),
+        'AfVu...OZG3',
+      );
+      expect(
+        FirebaseService.formatShortUid('user_vinh_001'),
+        'user..._001',
+      );
+    });
+
+    test('getUserDisplayName falls back to short UID when uninitialized', () async {
+      final name = await service.getUserDisplayName('AfVuzcugHAY2VtgQbiUAyH7HOZG3');
+      expect(name, 'AfVu...OZG3');
+      expect(FirebaseService.isCachedDisplayName('AfVuzcugHAY2VtgQbiUAyH7HOZG3'), isTrue);
+      expect(FirebaseService.getCachedDisplayName('AfVuzcugHAY2VtgQbiUAyH7HOZG3'), 'AfVu...OZG3');
+
+      final emptyName = await service.getUserDisplayName('');
+      expect(emptyName, 'Người tham gia');
     });
   });
 }

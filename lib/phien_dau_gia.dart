@@ -255,8 +255,11 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
                     'Giá hiện tại: ${_formatPrice(session.currentHighestBid > 0 ? session.currentHighestBid : session.startingPrice)} VNĐ',
                   ),
                   if (session.highestBidderUid?.isNotEmpty == true)
-                    Text(
-                      '${session.status == 'sold' ? 'Người thắng cuộc' : 'Người đang dẫn đầu'}: ${session.highestBidderUid}',
+                    _UserDisplayName(
+                      uid: session.highestBidderUid!,
+                      prefix:
+                          '${session.status == 'sold' ? 'Người thắng cuộc' : 'Người đang dẫn đầu'}: ',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                   if (session.result == 'no_bids')
                     const Text('Kết quả: Không có lượt đặt giá'),
@@ -348,8 +351,10 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
             final bid = bids[index];
             return ListTile(
               leading: const Icon(Icons.account_circle),
-              title: Text(
-                bid.bidderUid.isEmpty ? 'Người tham gia' : bid.bidderUid,
+              title: _UserDisplayName(
+                uid: bid.bidderUid,
+                fallbackText: 'Người tham gia',
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               subtitle: Text(_formatDate(bid.bidTime)),
               trailing: Text(
@@ -386,6 +391,81 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
   );
 
   void _backToSessions() => setState(() => _selectedSessionId = null);
+}
+
+/// Widget hiển thị tên người dùng:
+/// Map UID với collection users trên Firestore: fullname -> email -> UID rút gọn.
+class _UserDisplayName extends StatefulWidget {
+  final String uid;
+  final String? prefix;
+  final String fallbackText;
+  final TextStyle? style;
+
+  const _UserDisplayName({
+    required this.uid,
+    this.prefix,
+    this.fallbackText = 'Người tham gia',
+    this.style,
+  });
+
+  @override
+  State<_UserDisplayName> createState() => _UserDisplayNameState();
+}
+
+class _UserDisplayNameState extends State<_UserDisplayName> {
+  String? _displayName;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveName();
+  }
+
+  @override
+  void didUpdateWidget(covariant _UserDisplayName oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.uid != widget.uid) {
+      _resolveName();
+    }
+  }
+
+  void _resolveName() {
+    final uid = widget.uid.trim();
+    if (uid.isEmpty) {
+      _displayName = widget.fallbackText;
+      return;
+    }
+
+    if (FirebaseService.isCachedDisplayName(uid)) {
+      _displayName = FirebaseService.getCachedDisplayName(uid);
+      return;
+    }
+
+    _displayName = FirebaseService.formatShortUid(uid);
+
+    FirebaseService.instance.getUserDisplayName(uid).then((name) {
+      if (!mounted) return;
+      setState(() {
+        _displayName = name;
+      });
+    }).catchError((_) {
+      if (!mounted) return;
+      final fallback = FirebaseService.formatShortUid(uid);
+      setState(() {
+        _displayName = fallback;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = _displayName ?? FirebaseService.formatShortUid(widget.uid);
+    return Text(
+      '${widget.prefix ?? ''}$name',
+      style: widget.style,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
 }
 
 DateTime _endTime(AuctionSession session) =>
