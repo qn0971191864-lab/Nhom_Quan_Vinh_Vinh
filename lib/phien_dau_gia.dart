@@ -9,6 +9,7 @@ import 'contact_page.dart';
 import 'create_auction_page.dart';
 import 'item.dart';
 import 'news_page.dart';
+import 'auction_payment_page.dart';
 import 'services/firebase_service.dart';
 
 class TrangDauGiaPage extends StatefulWidget {
@@ -248,6 +249,47 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
               ),
             ),
           ),
+          if ((session.status == 'won' || session.status == 'sold') &&
+              (session.winnerUid?.isNotEmpty == true ||
+                  session.highestBidderUid?.isNotEmpty == true)) ...[
+            Builder(
+              builder: (context) {
+                final currentUid =
+                    firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+                final winnerUid =
+                    session.winnerUid ?? session.highestBidderUid ?? '';
+                if (currentUid == null || currentUid != winnerUid) {
+                  return const SizedBox.shrink();
+                }
+                final orderId =
+                    session.orderId?.trim().isNotEmpty == true
+                        ? session.orderId!.trim()
+                        : 'order_${session.sessionId}';
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Card(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    child: ListTile(
+                      leading: const Icon(Icons.emoji_events_rounded),
+                      title: const Text('Bạn đã thắng phiên đấu giá!'),
+                      subtitle: const Text(
+                        'Thanh toán trong 48 giờ để giữ vật phẩm.',
+                      ),
+                      trailing: FilledButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AuctionPaymentPage(orderId: orderId),
+                          ),
+                        ),
+                        child: const Text('Thanh toán'),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
           SizedBox(
             height: 220,
             child: Card(

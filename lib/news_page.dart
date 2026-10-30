@@ -175,6 +175,11 @@ class _NewsPageState extends State<NewsPage>
                     'Phiên đã có kết quả',
                     const Color(0xFF3E8E6D),
                   ),
+                  'won' => (
+                    Icons.emoji_events_rounded,
+                    'Phiên đã có người trúng đấu giá',
+                    const Color(0xFF3E8E6D),
+                  ),
                   _ => (
                     Icons.notifications_none_rounded,
                     'Phiên đã kết thúc',

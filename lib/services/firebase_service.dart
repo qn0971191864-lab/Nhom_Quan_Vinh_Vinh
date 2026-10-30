@@ -7,6 +7,7 @@ import '../auction_session.dart';
 import '../item.dart';
 import '../user.dart';
 import '../category.dart';
+import '../auction_order.dart';
 
 abstract interface class AuctionCallableClient {
   Future<Map<String, dynamic>> call(String name, Map<String, dynamic> data);
@@ -57,6 +58,7 @@ class FirebaseService {
   static const String sessionsCollection = 'auction_sessions';
   static const String bidsCollection = 'bids';
   static const String usersCollection = 'users';
+  static const String ordersCollection = 'orders';
 
   /// Singleton instance
   static final FirebaseService instance = FirebaseService();
@@ -142,6 +144,7 @@ class FirebaseService {
     final data = await _callables.call('placeBid', {
       'sessionId': sessionId.trim(),
       'maxAmount': bid.amount,
+      'amount': bid.amount,
     });
     bid
       ..sessionId = sessionId.trim()
@@ -226,6 +229,24 @@ class FirebaseService {
     });
   }
 
+  Stream<AuctionOrder?> getOrderStream(String orderId) {
+    return _firestore.collection(ordersCollection).doc(orderId).snapshots().map((
+      doc,
+    ) {
+      if (!doc.exists || doc.data() == null) return null;
+      return AuctionOrder.fromMap(doc.data()!, doc.id);
+    });
+  }
+
+  Future<AuctionOrder?> getOrderById(String orderId) async {
+    final doc = await _firestore
+        .collection(ordersCollection)
+        .doc(orderId)
+        .get();
+    if (!doc.exists || doc.data() == null) return null;
+    return AuctionOrder.fromMap(doc.data()!, doc.id);
+  }
+
   /// Tạo phiên qua Cloud Function, nơi xác thực quyền sở hữu và khởi tạo dữ liệu.
   Future<String> createAuctionSession(AuctionSession session) async {
     if (session.itemId.trim().isEmpty ||
@@ -293,7 +314,7 @@ class FirebaseService {
   }) async {
     return _callables.call('shipOrder', {
       'orderId': orderId,
-      'trackingCode': ?trackingCode,
+      'trackingCode': trackingCode,
     });
   }
 

@@ -337,6 +337,7 @@ exports.placeBid = onCall(async (request) => {
       result: buyNowTriggered ? 'sold' : null,
       winnerUid: buyNowTriggered ? bidderUid : null,
       winningBid: buyNowTriggered ? effectivePrice : null,
+      ...(buyNowTriggered ? { orderId: `order_${sessionRef.id}` } : {}),
       endTime: Timestamp.fromMillis(endTime),
       extensionCount,
       lastExtendedAt,
@@ -345,6 +346,57 @@ exports.placeBid = onCall(async (request) => {
 
     if (buyNowTriggered) {
       const itemRef = items.doc(session.itemId ?? session.item_id);
+      const platformFeeRate = Number.isFinite(session.platformFeeRate)
+        ? session.platformFeeRate
+        : 0.05;
+      const shippingFee = Number.isSafeInteger(session.shippingFee)
+        ? session.shippingFee
+        : 0;
+      const totalAmount = calculateOrderTotal({
+        winningBid: effectivePrice,
+        platformFeeRate,
+        shippingFee,
+        depositApplied: depositAmount,
+      });
+      const buyNowOrderRef = orders.doc(`order_${sessionRef.id}`);
+      transaction.set(buyNowOrderRef, {
+        auctionId: sessionRef.id,
+        itemId: session.itemId ?? session.item_id,
+        sellerUid: session.sellerUid,
+        buyerUid: bidderUid,
+        status: 'PENDING_PAYMENT',
+        winningBid: effectivePrice,
+        platformFeeRate,
+        platformFee: Math.round(effectivePrice * platformFeeRate),
+        shippingFee,
+        depositApplied: depositAmount,
+        totalAmount,
+        paymentDeadline: Timestamp.fromMillis(now.toMillis() + 48 * 60 * 60 * 1000),
+        shippingAddress: null,
+        paymentReference: null,
+        escrowStatus: 'LOCKED_BY_PAYMENT',
+        createdAt: now,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(escrowTransactions.doc(`escrow_${buyNowOrderRef.id}`), {
+        orderId: buyNowOrderRef.id,
+        buyerUid: bidderUid,
+        sellerUid: session.sellerUid,
+        amount: depositAmount,
+        status: 'LOCKED',
+        createdAt: now,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(notifications.doc(), {
+        userUid: bidderUid,
+        type: 'AUCTION_WON',
+        auctionId: sessionRef.id,
+        orderId: buyNowOrderRef.id,
+        title: 'Bạn đã thắng phiên đấu giá',
+        content: 'Vui lòng thanh toán trong 48 giờ.',
+        isRead: false,
+        createdAt: now,
+      });
       transaction.update(itemRef, {
         status: 'sold',
         winnerUid: bidderUid,
@@ -643,7 +695,8 @@ exports.confirmOrderAddress = onCall(async (request) => {
 });
 
 exports.paymentWebhook = onCall(async (request) => {
-  const { orderId, paymentReference, status, paidAmount } = request.data ?? {};
+  const uid = requireUid(request);
+  const { orderId, paymentReference, status, paidAmount, paymentMethod } = request.data ?? {};
   if (typeof orderId !== 'string' || typeof paymentReference !== 'string' ||
       !Number.isSafeInteger(paidAmount)) {
     throw new HttpsError('invalid-argument', 'Webhook thanh toán không hợp lệ.');
@@ -653,6 +706,9 @@ exports.paymentWebhook = onCall(async (request) => {
     const snapshot = await transaction.get(orderRef);
     if (!snapshot.exists) throw new HttpsError('not-found', 'Không tìm thấy đơn hàng.');
     const order = snapshot.data();
+    if (order.buyerUid !== uid) {
+      throw new HttpsError('permission-denied', 'Bạn không sở hữu đơn hàng này.');
+    }
     if (order.status !== 'PENDING_PAYMENT') return;
     if (status !== 'PAID' || paidAmount < order.totalAmount) {
       throw new HttpsError('failed-precondition', 'Thanh toán chưa đủ hoặc không thành công.');
@@ -666,6 +722,7 @@ exports.paymentWebhook = onCall(async (request) => {
       paymentReference,
       paidAmount,
       paidAt: now,
+      paymentMethod: typeof paymentMethod === 'string' ? paymentMethod : null,
       escrowStatus: 'ESCROW_HELD',
       updatedAt: FieldValue.serverTimestamp(),
     });

@@ -24,6 +24,9 @@ class AuctionSession extends ProjectModel<String> {
   int extensionMinutes = 3;
   int maxExtensions = 10;
   int extensionCount = 0;
+  String? orderId;
+  String? winnerUid;
+  int? winningBid;
 
   /// Trạng thái phiên: 'scheduled', 'active', 'sold', 'ended', 'cancelled'
   String status = 'scheduled';
@@ -64,6 +67,9 @@ class AuctionSession extends ProjectModel<String> {
     this.extensionMinutes = 3,
     this.maxExtensions = 10,
     this.extensionCount = 0,
+    this.orderId,
+    this.winnerUid,
+    this.winningBid,
     this.status = 'scheduled',
   });
 
@@ -163,6 +169,12 @@ class AuctionSession extends ProjectModel<String> {
       extensionMinutes: (map['extensionMinutes'] as num?)?.toInt() ?? 3,
       maxExtensions: (map['maxExtensions'] as num?)?.toInt() ?? 10,
       extensionCount: (map['extensionCount'] as num?)?.toInt() ?? 0,
+      orderId: map['orderId'] as String?,
+      winnerUid:
+          map['winnerUid'] as String? ?? map['highestBidderUid'] as String?,
+      winningBid:
+          (map['winningBid'] as num?)?.toInt() ??
+          (map['currentHighestBid'] as num?)?.toInt(),
       status: storedStatus == 'upcoming' ? 'scheduled' : storedStatus,
     );
   }
