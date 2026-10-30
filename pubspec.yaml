@@ -38,6 +38,8 @@ dependencies:
   cloud_firestore: ^7.0.0
   firebase_auth: ^7.0.1
   cloud_functions: ^7.0.1
+  shared_preferences: ^2.5.3
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

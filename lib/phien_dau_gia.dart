@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 
 import 'bid.dart';
 import 'auction_session.dart';
+import 'contact_page.dart';
+import 'create_auction_page.dart';
 import 'item.dart';
+import 'news_page.dart';
 import 'services/firebase_service.dart';
 
 class TrangDauGiaPage extends StatefulWidget {
@@ -20,31 +23,24 @@ class TrangDauGiaPage extends StatefulWidget {
 class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
   late String? _selectedSessionId;
   late final StreamSubscription<firebase_auth.User?> _authSubscription;
-  bool _authReady = false;
   bool _isSignedIn = false;
-  Object? _authError;
 
   @override
   void initState() {
     super.initState();
     _selectedSessionId = widget.sessionId;
+    _isSignedIn = firebase_auth.FirebaseAuth.instance.currentUser != null;
     _authSubscription = firebase_auth.FirebaseAuth.instance
         .authStateChanges()
         .listen(
           (user) {
             if (!mounted) return;
             setState(() {
-              _authReady = true;
               _isSignedIn = user != null;
-              _authError = null;
             });
           },
           onError: (Object error, StackTrace stackTrace) {
-            if (!mounted) return;
-            setState(() {
-              _authReady = true;
-              _authError = error;
-            });
+            debugPrint('Lỗi theo dõi trạng thái đăng nhập: $error');
           },
         );
   }
@@ -64,21 +60,6 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
             'Firebase chưa được khởi tạo. Không thể tải phiên đấu giá.',
           ),
         ),
-      );
-    }
-    if (!_authReady) {
-      return _scaffold(
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_authError != null) {
-      return _scaffold(
-        body: _message('Không thể kiểm tra đăng nhập: $_authError'),
-      );
-    }
-    if (!_isSignedIn) {
-      return _scaffold(
-        body: _message('Vui lòng đăng nhập để xem các phiên đấu giá.'),
       );
     }
     if (_selectedSessionId != null) {
@@ -290,18 +271,84 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
             onPressed: canBid ? () => _handleQuickBid(session) : null,
             child: Text(
               canBid
-                  ? 'Đặt giá nhanh'
+                  ? (_isSignedIn ? 'Đặt giá nhanh' : 'Đăng nhập để đặt giá')
                   : startTime != null && now.isBefore(startTime)
                   ? 'Phiên chưa bắt đầu'
                   : 'Phiên không nhận đặt giá',
             ),
           ),
+          if (_isSessionOwner(session) && session.status == 'scheduled') ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => _confirmCancelSession(session),
+              icon: const Icon(Icons.delete_outline_rounded),
+              label: const Text('Xóa phiên tôi vừa tạo'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.redAccent),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
+  bool _isSessionOwner(AuctionSession session) {
+    final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+    return currentUser != null && session.sellerUid == currentUser.uid;
+  }
+
+  Future<void> _confirmCancelSession(AuctionSession session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xóa phiên đấu giá?'),
+        content: const Text(
+          'Phiên chưa bắt đầu sẽ bị xóa khỏi danh sách đấu giá. Không thể hoàn tác thao tác này.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Xóa phiên'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await FirebaseService.instance.cancelAuctionSession(session.sessionId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Đã xóa phiên đấu giá.')));
+      _backToSessions();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
   Future<void> _handleQuickBid(AuctionSession session) async {
+    if (firebase_auth.FirebaseAuth.instance.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng đăng nhập để đặt giá.')),
+      );
+      await Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const ContactPage()));
+      return;
+    }
+
     final amount = session.currentHighestBid > 0
         ? session.currentHighestBid + session.minimumIncrement
         : session.startingPrice;
@@ -378,6 +425,22 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
         leading: onBack == null
             ? null
             : IconButton(onPressed: onBack, icon: const Icon(Icons.arrow_back)),
+        actions: [
+          IconButton(
+            tooltip: 'Thông báo phiên đấu giá',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const NewsPage(initialTab: 1)),
+            ),
+            icon: const Icon(Icons.notifications_outlined),
+          ),
+          IconButton(
+            tooltip: 'Tạo phiên đấu giá',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CreateAuctionPage()),
+            ),
+            icon: const Icon(Icons.add_circle_outline_rounded),
+          ),
+        ],
       ),
       body: body,
     );
@@ -443,18 +506,21 @@ class _UserDisplayNameState extends State<_UserDisplayName> {
 
     _displayName = FirebaseService.formatShortUid(uid);
 
-    FirebaseService.instance.getUserDisplayName(uid).then((name) {
-      if (!mounted) return;
-      setState(() {
-        _displayName = name;
-      });
-    }).catchError((_) {
-      if (!mounted) return;
-      final fallback = FirebaseService.formatShortUid(uid);
-      setState(() {
-        _displayName = fallback;
-      });
-    });
+    FirebaseService.instance
+        .getUserDisplayName(uid)
+        .then((name) {
+          if (!mounted) return;
+          setState(() {
+            _displayName = name;
+          });
+        })
+        .catchError((_) {
+          if (!mounted) return;
+          final fallback = FirebaseService.formatShortUid(uid);
+          setState(() {
+            _displayName = fallback;
+          });
+        });
   }
 
   @override
