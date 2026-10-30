@@ -1,15 +1,13 @@
-import 'dart:async';
-
-import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
 import 'auction_session.dart';
 import 'item.dart';
+import 'news_page.dart';
+import 'phien_dau_gia.dart';
 import 'services/firebase_service.dart';
 
 const _ink = Color(0xFF14243A);
 const _gold = Color(0xFFC49A55);
-const _canvas = Color(0xFFF5F6F8);
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,12 +18,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final _searchController = TextEditingController();
-  late final StreamSubscription<firebase_auth.User?> _authSubscription;
-  Stream<List<Item>>? _itemsStream;
-  Stream<List<AuctionSession>>? _sessionsStream;
-  String? _streamUid;
-  Object? _authError;
-  bool _authReady = false;
   String _searchText = '';
   String _selectedFilter = 'Tất cả';
 
@@ -39,34 +31,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _authSubscription = firebase_auth.FirebaseAuth.instance
-        .authStateChanges()
-        .listen(
-          (user) {
-            if (!mounted) return;
-            setState(() {
-              _authReady = true;
-              _authError = null;
-              if (user == null) {
-                _streamUid = null;
-                _itemsStream = null;
-                _sessionsStream = null;
-              } else if (_streamUid != user.uid) {
-                _streamUid = user.uid;
-                _itemsStream = FirebaseService.instance.getItemsStream();
-                _sessionsStream =
-                    FirebaseService.instance.getAuctionSessionsStream();
-              }
-            });
-          },
-          onError: (Object error, StackTrace stackTrace) {
-            if (!mounted) return;
-            setState(() {
-              _authReady = true;
-              _authError = error;
-            });
-          },
-        );
     _searchController.addListener(() {
       setState(() => _searchText = _searchController.text.trim().toLowerCase());
     });
@@ -74,15 +38,14 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    unawaited(_authSubscription.cancel());
     _searchController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: _canvas,
       appBar: AppBar(
         backgroundColor: _ink,
         foregroundColor: Colors.white,
@@ -112,30 +75,24 @@ class _HomePageState extends State<HomePage> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 18),
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(13),
+            child: IconButton(
+              tooltip: 'Thông báo phiên đấu giá',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const NewsPage(initialTab: 1),
+                ),
               ),
-              child: const Icon(Icons.gavel_rounded, color: Color(0xFFE0C48F)),
+              icon: const Icon(
+                Icons.notifications_outlined,
+                color: Color(0xFFE0C48F),
+              ),
             ),
           ),
         ],
       ),
       body: StreamBuilder<List<Item>>(
-        stream: _itemsStream,
+        stream: FirebaseService.instance.getItemsStream(),
         builder: (context, itemSnapshot) {
-          if (!_authReady) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (_authError != null) {
-            return _message('Không thể kiểm tra đăng nhập: $_authError');
-          }
-          if (_itemsStream == null || _sessionsStream == null) {
-            return _message('Vui lòng đăng nhập để xem sản phẩm.');
-          }
           if (itemSnapshot.hasError) {
             return _message('Không thể tải sản phẩm: ${itemSnapshot.error}');
           }
@@ -144,7 +101,7 @@ class _HomePageState extends State<HomePage> {
           }
 
           return StreamBuilder<List<AuctionSession>>(
-            stream: _sessionsStream,
+            stream: FirebaseService.instance.getAuctionSessionsStream(),
             builder: (context, sessionSnapshot) {
               if (sessionSnapshot.hasError) {
                 return _message(
@@ -215,7 +172,9 @@ class _HomePageState extends State<HomePage> {
                                   icon: const Icon(Icons.close_rounded),
                                 ),
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: isDark
+                              ? const Color(0xFF252526)
+                              : Colors.white,
                           contentPadding: const EdgeInsets.symmetric(
                             vertical: 15,
                           ),
@@ -254,14 +213,24 @@ class _HomePageState extends State<HomePage> {
                             onSelected: (_) =>
                                 setState(() => _selectedFilter = filter),
                             labelStyle: TextStyle(
-                              color: selected ? Colors.white : _ink,
+                              color: selected
+                                  ? Colors.white
+                                  : Theme.of(context).colorScheme.onSurface,
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
-                            selectedColor: _ink,
-                            backgroundColor: Colors.white,
+                            selectedColor: isDark
+                                ? const Color(0xFF007ACC)
+                                : _ink,
+                            backgroundColor: isDark
+                                ? const Color(0xFF252526)
+                                : Colors.white,
                             side: BorderSide(
-                              color: selected ? _ink : const Color(0xFFE7E9ED),
+                              color: selected
+                                  ? (isDark ? const Color(0xFF007ACC) : _ink)
+                                  : (isDark
+                                        ? const Color(0xFF3C3C3C)
+                                        : const Color(0xFFE7E9ED)),
                             ),
                             shape: const StadiumBorder(),
                           );
@@ -524,6 +493,7 @@ class _ItemCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isLive = session?.status == 'active';
     final price = session != null && session!.currentHighestBid > 0
         ? session!.currentHighestBid
@@ -535,154 +505,169 @@ class _ItemCard extends StatelessWidget {
       _ => _itemStatus(item.status),
     };
 
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0xFFE9EBEF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 6,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                item.imageUrl.isEmpty
-                    ? const ColoredBox(
-                        color: Color(0xFFEDEFF2),
-                        child: Icon(
-                          Icons.image_outlined,
-                          size: 40,
-                          color: Color(0xFF9AA3AE),
-                        ),
-                      )
-                    : Image.network(
-                        item.imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const ColoredBox(
-                              color: Color(0xFFEDEFF2),
-                              child: Icon(
-                                Icons.broken_image_outlined,
-                                size: 36,
-                                color: Color(0xFF9AA3AE),
-                              ),
-                            ),
-                      ),
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isLive ? const Color(0xFFC94E4E) : _ink,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isLive) ...[
-                          const Icon(
-                            Icons.circle,
-                            size: 6,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 5),
-                        ],
-                        Text(
-                          status,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            letterSpacing: 0.5,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: session == null
+          ? null
+          : () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => TrangDauGiaPage(sessionId: session!.sessionId),
+              ),
             ),
+      child: Card(
+        elevation: 0,
+        color: isDark ? const Color(0xFF252526) : Colors.white,
+        clipBehavior: Clip.antiAlias,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(
+            color: isDark ? const Color(0xFF3C3C3C) : const Color(0xFFE9EBEF),
           ),
-          Expanded(
-            flex: 4,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              flex: 6,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Text(
-                    item.itemName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _ink,
-                      height: 1.2,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    isLive ? 'GIÁ HIỆN TẠI' : 'GIÁ KHỞI ĐIỂM',
-                    style: const TextStyle(
-                      color: Color(0xFF7A8492),
-                      fontSize: 9,
-                      letterSpacing: 0.7,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '${_formatPrice(price)} đ',
-                      maxLines: 1,
-                      style: const TextStyle(
-                        color: _ink,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
+                  item.imageUrl.isEmpty
+                      ? const ColoredBox(
+                          color: Color(0xFFEDEFF2),
+                          child: Icon(
+                            Icons.image_outlined,
+                            size: 40,
+                            color: Color(0xFF9AA3AE),
+                          ),
+                        )
+                      : Image.network(
+                          item.imageUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              const ColoredBox(
+                                color: Color(0xFFEDEFF2),
+                                child: Icon(
+                                  Icons.broken_image_outlined,
+                                  size: 36,
+                                  color: Color(0xFF9AA3AE),
+                                ),
+                              ),
+                        ),
+                  Positioned(
+                    top: 10,
+                    left: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isLive ? const Color(0xFFC94E4E) : _ink,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isLive) ...[
+                            const Icon(
+                              Icons.circle,
+                              size: 6,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 5),
+                          ],
+                          Text(
+                            status,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 9,
+                              letterSpacing: 0.5,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  if (session != null) ...[
-                    const SizedBox(height: 5),
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.schedule_rounded,
-                          size: 12,
-                          color: _gold,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            _sessionTimeLabel(session!),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF7A8492),
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                 ],
               ),
             ),
-          ),
-        ],
+            Expanded(
+              flex: 4,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(11, 10, 11, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.itemName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: isDark ? const Color(0xFFF0F0F0) : _ink,
+                        height: 1.2,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      isLive ? 'GIÁ HIỆN TẠI' : 'GIÁ KHỞI ĐIỂM',
+                      style: TextStyle(
+                        color: isDark
+                            ? const Color(0xFF9DA7B3)
+                            : const Color(0xFF7A8492),
+                        fontSize: 9,
+                        letterSpacing: 0.7,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${_formatPrice(price)} đ',
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: isDark ? const Color(0xFFFFFFFF) : _ink,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    if (session != null) ...[
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.schedule_rounded,
+                            size: 12,
+                            color: _gold,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _sessionTimeLabel(session!),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFF7A8492),
+                                fontSize: 10,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

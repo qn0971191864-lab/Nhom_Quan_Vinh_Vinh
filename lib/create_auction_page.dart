@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'auction_session.dart';
+import 'contact_page.dart';
 import 'item.dart';
 import 'services/firebase_service.dart';
 
@@ -153,112 +154,158 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Tạo phiên đấu giá')),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              'Thông tin vật phẩm',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Tên vật phẩm',
-                prefixIcon: Icon(Icons.inventory_2_outlined),
-              ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Nhập tên vật phẩm'
-                  : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _descriptionController,
-              minLines: 2,
-              maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Mô tả',
-                prefixIcon: Icon(Icons.notes_outlined),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _imageController,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'Link hình ảnh (tuỳ chọn)',
-                prefixIcon: Icon(Icons.link),
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnapshot) {
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (!authSnapshot.hasData) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Tạo phiên đấu giá')),
+            body: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_outline_rounded, size: 64),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Bạn cần đăng nhập để tạo phiên đấu giá.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: () async {
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ContactPage(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.login_rounded),
+                      label: const Text('Đăng nhập ngay'),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 20),
-            Text(
-              'Cấu hình đấu giá',
-              style: Theme.of(context).textTheme.titleLarge,
+          );
+        }
+
+        return Scaffold(
+          appBar: AppBar(title: const Text('Tạo phiên đấu giá')),
+          body: Form(
+            key: _formKey,
+            child: ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text(
+                  'Thông tin vật phẩm',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Tên vật phẩm',
+                    prefixIcon: Icon(Icons.inventory_2_outlined),
+                  ),
+                  validator: (value) => value == null || value.trim().isEmpty
+                      ? 'Nhập tên vật phẩm'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _descriptionController,
+                  minLines: 2,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Mô tả',
+                    prefixIcon: Icon(Icons.notes_outlined),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _imageController,
+                  keyboardType: TextInputType.url,
+                  decoration: const InputDecoration(
+                    labelText: 'Link hình ảnh (tuỳ chọn)',
+                    prefixIcon: Icon(Icons.link),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Cấu hình đấu giá',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _priceController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá khởi điểm (VNĐ)',
+                    prefixIcon: Icon(Icons.attach_money),
+                  ),
+                  validator: (value) {
+                    final price = int.tryParse(value?.trim() ?? '');
+                    return price == null || price <= 0
+                        ? 'Giá không hợp lệ'
+                        : null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _incrementController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Bước giá tối thiểu (VNĐ)',
+                    prefixIcon: Icon(Icons.trending_up),
+                  ),
+                  validator: (value) {
+                    final increment = int.tryParse(value?.trim() ?? '');
+                    return increment == null || increment <= 0
+                        ? 'Bước giá không hợp lệ'
+                        : null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                _timeTile(
+                  icon: Icons.play_circle_outline,
+                  title: 'Thời gian bắt đầu',
+                  value: _startTime,
+                  onTap: () => _pickDateTime(true),
+                ),
+                const SizedBox(height: 10),
+                _timeTile(
+                  icon: Icons.stop_circle_outlined,
+                  title: 'Thời gian kết thúc',
+                  value: _endTime,
+                  onTap: () => _pickDateTime(false),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: _busy ? null : _submit,
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.gavel_rounded),
+                  label: Text(_busy ? 'Đang tạo...' : 'Tạo phiên đấu giá'),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _priceController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Giá khởi điểm (VNĐ)',
-                prefixIcon: Icon(Icons.attach_money),
-              ),
-              validator: (value) {
-                final price = int.tryParse(value?.trim() ?? '');
-                return price == null || price <= 0 ? 'Giá không hợp lệ' : null;
-              },
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _incrementController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Bước giá tối thiểu (VNĐ)',
-                prefixIcon: Icon(Icons.trending_up),
-              ),
-              validator: (value) {
-                final increment = int.tryParse(value?.trim() ?? '');
-                return increment == null || increment <= 0
-                    ? 'Bước giá không hợp lệ'
-                    : null;
-              },
-            ),
-            const SizedBox(height: 12),
-            _timeTile(
-              icon: Icons.play_circle_outline,
-              title: 'Thời gian bắt đầu',
-              value: _startTime,
-              onTap: () => _pickDateTime(true),
-            ),
-            const SizedBox(height: 10),
-            _timeTile(
-              icon: Icons.stop_circle_outlined,
-              title: 'Thời gian kết thúc',
-              value: _endTime,
-              onTap: () => _pickDateTime(false),
-            ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: _busy ? null : _submit,
-              icon: _busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.gavel_rounded),
-              label: Text(_busy ? 'Đang tạo...' : 'Tạo phiên đấu giá'),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -268,15 +315,18 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
     required DateTime? value,
     required VoidCallback onTap,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDark ? const Color(0xFF252526) : Colors.white,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE2E6EB)),
+          border: Border.all(
+            color: isDark ? const Color(0xFF3C3C3C) : const Color(0xFFE2E6EB),
+          ),
         ),
         child: Row(
           children: [
