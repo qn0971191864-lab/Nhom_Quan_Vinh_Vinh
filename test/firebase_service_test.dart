@@ -46,7 +46,7 @@ void main() {
         expect(callables.calls.single.name, 'placeBid');
         expect(callables.calls.single.data, {
           'sessionId': 'session-1',
-          'amount': 150,
+          'maxAmount': 150,
         });
         expect(bid.sessionId, 'session-1');
         expect(bid.bidderUid, 'authenticated-uid');

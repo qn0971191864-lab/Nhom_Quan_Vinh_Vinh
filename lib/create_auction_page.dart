@@ -20,6 +20,8 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
   final _imageController = TextEditingController();
   final _priceController = TextEditingController();
   final _incrementController = TextEditingController(text: '100000');
+  final _buyNowController = TextEditingController();
+  final _reserveController = TextEditingController();
   DateTime? _startTime;
   DateTime? _endTime;
   bool _busy = false;
@@ -31,6 +33,8 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
     _imageController.dispose();
     _priceController.dispose();
     _incrementController.dispose();
+    _buyNowController.dispose();
+    _reserveController.dispose();
     super.dispose();
   }
 
@@ -98,6 +102,8 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
     try {
       final price = int.parse(_priceController.text.trim());
       final increment = int.parse(_incrementController.text.trim());
+      final buyNowPrice = int.tryParse(_buyNowController.text.trim());
+      final reservePrice = int.tryParse(_reserveController.text.trim());
       final itemId = DateTime.now().millisecondsSinceEpoch;
       await FirebaseService.instance.addItem(
         Item(
@@ -115,6 +121,8 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
           itemId: itemId.toString(),
           startingPrice: price,
           minimumIncrement: increment,
+          buyNowPrice: buyNowPrice,
+          reservePrice: reservePrice,
           startTime: _startTime!.toUtc().toIso8601String(),
           endTime: _endTime!.toUtc().toIso8601String(),
           status: 'scheduled',
@@ -269,6 +277,38 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
                     final increment = int.tryParse(value?.trim() ?? '');
                     return increment == null || increment <= 0
                         ? 'Bước giá không hợp lệ'
+                        : null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _buyNowController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá mua ngay (VNĐ, tùy chọn)',
+                    prefixIcon: Icon(Icons.flash_on_outlined),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return null;
+                    final price = int.tryParse(value.trim());
+                    return price == null || price <= 0
+                        ? 'Giá mua ngay không hợp lệ'
+                        : null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _reserveController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá sàn bảo lưu (VNĐ, tùy chọn)',
+                    prefixIcon: Icon(Icons.security_outlined),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return null;
+                    final price = int.tryParse(value.trim());
+                    return price == null || price <= 0
+                        ? 'Giá bảo lưu không hợp lệ'
                         : null;
                   },
                 ),

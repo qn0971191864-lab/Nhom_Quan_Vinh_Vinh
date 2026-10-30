@@ -117,12 +117,20 @@ void main() {
         'sellerUid',
         'startingPrice',
         'minimumIncrement',
+        'buyNowPrice',
+        'reservePrice',
+        'reservePriceMet',
         'currentHighestBid',
         'highestBidderUid',
         'startTime',
         'endTime',
         'status',
         'result',
+        'antiSnipingEnabled',
+        'extensionWindowMinutes',
+        'extensionMinutes',
+        'maxExtensions',
+        'extensionCount',
       });
       expect(map['sellerUid'], 'seller-1');
       expect(map['minimumIncrement'], 5000);

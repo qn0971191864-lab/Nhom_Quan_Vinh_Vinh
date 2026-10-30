@@ -128,7 +128,10 @@ class FirebaseService {
   // ===========================================================================
 
   /// Gửi lượt đặt giá tới Cloud Function; danh tính người đặt lấy từ token Auth.
-  Future<void> placeBid({required String sessionId, required Bid bid}) async {
+  Future<Map<String, dynamic>> placeBid({
+    required String sessionId,
+    required Bid bid,
+  }) async {
     if (sessionId.trim().isEmpty) {
       throw ArgumentError('Mã phiên đấu giá không được để trống.');
     }
@@ -138,7 +141,7 @@ class FirebaseService {
 
     final data = await _callables.call('placeBid', {
       'sessionId': sessionId.trim(),
-      'amount': bid.amount,
+      'maxAmount': bid.amount,
     });
     bid
       ..sessionId = sessionId.trim()
@@ -147,6 +150,7 @@ class FirebaseService {
       ..bidTime = data['bidTime'] as String? ?? '';
     final parsedId = int.tryParse(data['bidId'] as String? ?? '');
     if (parsedId != null) bid.bidId = parsedId;
+    return data;
   }
 
   // ===========================================================================
@@ -239,6 +243,12 @@ class FirebaseService {
       'itemId': session.itemId,
       'startingPrice': session.startingPrice,
       'minimumIncrement': session.minimumIncrement,
+      'buyNowPrice': session.buyNowPrice,
+      'reservePrice': session.reservePrice,
+      'antiSnipingEnabled': session.antiSnipingEnabled,
+      'extensionWindowMinutes': session.extensionWindowMinutes,
+      'extensionMinutes': session.extensionMinutes,
+      'maxExtensions': session.maxExtensions,
       'startTime': startTime.toUtc().toIso8601String(),
       'endTime': endTime.toUtc().toIso8601String(),
     });
@@ -253,6 +263,56 @@ class FirebaseService {
 
   Future<void> cancelAuctionSession(String sessionId) async {
     await _callables.call('cancelAuctionSession', {'sessionId': sessionId});
+  }
+
+  Future<Map<String, dynamic>> confirmOrderAddress({
+    required String orderId,
+    required String fullName,
+    required String phone,
+    required String address,
+  }) async {
+    return _callables.call('confirmOrderAddress', {
+      'orderId': orderId,
+      'shippingAddress': {
+        'fullName': fullName,
+        'phone': phone,
+        'address': address,
+      },
+    });
+  }
+
+  Future<Map<String, dynamic>> paymentWebhook(
+    Map<String, dynamic> payload,
+  ) async {
+    return _callables.call('paymentWebhook', payload);
+  }
+
+  Future<Map<String, dynamic>> shipOrder(
+    String orderId, {
+    String? trackingCode,
+  }) async {
+    return _callables.call('shipOrder', {
+      'orderId': orderId,
+      'trackingCode': ?trackingCode,
+    });
+  }
+
+  Future<Map<String, dynamic>> confirmDelivery(String orderId) async {
+    return _callables.call('confirmDelivery', {'orderId': orderId});
+  }
+
+  Future<Map<String, dynamic>> completeOrder(String orderId) async {
+    return _callables.call('completeOrder', {'orderId': orderId});
+  }
+
+  Future<Map<String, dynamic>> respondSecondChance({
+    required String offerId,
+    required String decision,
+  }) async {
+    return _callables.call('respondSecondChance', {
+      'offerId': offerId,
+      'decision': decision,
+    });
   }
 
   // ===========================================================================
