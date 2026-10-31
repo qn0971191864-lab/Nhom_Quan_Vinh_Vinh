@@ -3,12 +3,13 @@ const { getAuth } = require('firebase-admin/auth');
 const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
+const { enqueueEmail, processEmailQueue } = require('./email_service');
 const {
   auctionOutcome,
   auctionOutcomeWithReserve,
   calculateFinalWinningPrice,
   calculateOrderTotal,
-  calculateWalletReservation,
+  calculateSellerSettlement,
   getExtendedEndTime,
   isBidWindowOpen,
   minimumBidAmount,
@@ -29,6 +30,93 @@ const walletReservations = db.collection('wallet_reservations');
 const escrowTransactions = db.collection('escrow_transactions');
 const secondChanceOffers = db.collection('second_chance_offers');
 const notifications = db.collection('notifications');
+const linkedWallets = db.collection('linked_wallets');
+const userWallets = db.collection('user_wallets');
+const emailLogs = db.collection('email_logs');
+
+async function requireLinkedWallet(uid) {
+  const userWalletSnapshot = await userWallets.doc(uid).get();
+  const verifiedWalletSnapshot = await linkedWallets
+    .where('userUid', '==', uid)
+    .where('status', '==', 'VERIFIED')
+    .limit(1)
+    .get();
+  const linkedFromUser = userWalletSnapshot.exists &&
+    userWalletSnapshot.get('isWalletLinked') === true &&
+    userWalletSnapshot.get('status') === 'VERIFIED';
+  if (!linkedFromUser && verifiedWalletSnapshot.empty) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Bạn phải liên kết ít nhất một ví đã xác thực trước khi thực hiện thao tác này.',
+    );
+  }
+}
+
+async function releaseLockedDeposit(transaction, depositId, userUid, now) {
+  const depositRef = deposits.doc(depositId);
+  const depositSnapshot = await transaction.get(depositRef);
+  if (!depositSnapshot.exists) return;
+  const deposit = depositSnapshot.data();
+  if (deposit.status !== 'locked') return;
+  const amount = Number.isSafeInteger(deposit.amount) && deposit.amount > 0
+    ? deposit.amount
+    : 0;
+  const userRef = db.collection('users').doc(userUid);
+  const userSnapshot = await transaction.get(userRef);
+  if (!userSnapshot.exists || amount === 0) return;
+  const availableBalance = Number.isSafeInteger(userSnapshot.get('walletBalance'))
+    ? userSnapshot.get('walletBalance')
+    : 0;
+  const lockedBalance = Number.isSafeInteger(userSnapshot.get('lockedBalance'))
+    ? userSnapshot.get('lockedBalance')
+    : 0;
+  transaction.update(userRef, {
+    walletBalance: availableBalance + amount,
+    lockedBalance: Math.max(0, lockedBalance - amount),
+    walletUpdatedAt: FieldValue.serverTimestamp(),
+  });
+  transaction.set(userWallets.doc(userUid), {
+    availableBalance: availableBalance + amount,
+    lockedBalance: Math.max(0, lockedBalance - amount),
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  transaction.update(depositRef, {
+    status: 'released',
+    releasedAt: now,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
+
+async function forfeitLockedDeposit(transaction, depositId, userUid, now) {
+  const depositRef = deposits.doc(depositId);
+  const depositSnapshot = await transaction.get(depositRef);
+  if (!depositSnapshot.exists) return;
+  const deposit = depositSnapshot.data();
+  if (deposit.status !== 'locked' && deposit.status !== 'applied_to_order') return;
+  const amount = Number.isSafeInteger(deposit.amount) && deposit.amount > 0
+    ? deposit.amount
+    : 0;
+  const userRef = db.collection('users').doc(userUid);
+  const userSnapshot = await transaction.get(userRef);
+  if (userSnapshot.exists && amount > 0) {
+    const lockedBalance = Number.isSafeInteger(userSnapshot.get('lockedBalance'))
+      ? userSnapshot.get('lockedBalance')
+      : amount;
+    transaction.update(userRef, {
+      lockedBalance: Math.max(0, lockedBalance - amount),
+      walletUpdatedAt: FieldValue.serverTimestamp(),
+    });
+    transaction.set(userWallets.doc(userUid), {
+      lockedBalance: Math.max(0, lockedBalance - amount),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+  transaction.update(depositRef, {
+    status: 'forfeited',
+    forfeitedAt: now,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+}
 
 function requireUid(request) {
   const uid = request.auth?.uid;
@@ -36,6 +124,18 @@ function requireUid(request) {
     throw new HttpsError('unauthenticated', 'Đăng nhập để thực hiện thao tác này.');
   }
   return uid;
+}
+
+async function getAccountEmail(uid) {
+  const userSnapshot = await db.collection('users').doc(uid).get();
+  const profileEmail = userSnapshot.exists
+    ? userSnapshot.get('email')
+    : null;
+  if (typeof profileEmail === 'string' && profileEmail.trim()) {
+    return profileEmail.trim();
+  }
+  const authUser = await getAuth().getUser(uid);
+  return authUser.email ?? '';
 }
 
 function requireAdmin(request) {
@@ -65,117 +165,114 @@ function requirePositiveInteger(value, fieldName) {
   return value;
 }
 
-async function getWalletReservation(transaction, sessionId, userUid) {
-  const reservationRef = walletReservations.doc(`${sessionId}_${userUid}`);
-  const reservationSnapshot = await transaction.get(reservationRef);
-  if (!reservationSnapshot.exists ||
-      reservationSnapshot.get('status') !== 'active') {
-    return null;
+exports.linkWallet = onCall(async (request) => {
+  const uid = requireUid(request);
+  const provider = String(request.data?.provider ?? '').trim().toUpperCase();
+  const accountMask = String(request.data?.accountMask ?? '').trim();
+  const allowedProviders = ['MOMO', 'ZALOPAY', 'VNPAY', 'SHOPEEPAY', 'BANK_VIETQR'];
+  if (!allowedProviders.includes(provider)) {
+    throw new HttpsError('invalid-argument', 'Nhà cung cấp ví không được hỗ trợ.');
   }
-  const userRef = db.collection('users').doc(userUid);
-  const userSnapshot = await transaction.get(userRef);
-  if (!userSnapshot.exists) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Không tìm thấy hồ sơ người đang giữ tiền trong ví.',
+  if (!/^\*?\d{4}$/.test(accountMask)) {
+    throw new HttpsError('invalid-argument', 'accountMask phải gồm bốn chữ số cuối.');
+  }
+  const walletRef = linkedWallets.doc();
+  await db.runTransaction(async (transaction) => {
+    const userWalletRef = userWallets.doc(uid);
+    const existing = await transaction.get(
+      linkedWallets.where('userUid', '==', uid).limit(20),
     );
-  }
-  return { reservationRef, reservationSnapshot, userRef, userSnapshot };
-}
-
-async function getSessionWalletReservations(transaction, sessionId, proxies) {
-  const reservations = await Promise.all(proxies.map((proxy) =>
-    getWalletReservation(transaction, sessionId, proxy.bidderUid),
-  ));
-  return reservations.filter((reservation) => reservation != null);
-}
-
-function releaseSessionWalletReservations(
-  transaction,
-  reservations,
-  { exceptUid = null, now = Timestamp.now() } = {},
-) {
-  for (const reservation of reservations) {
-    const userUid = reservation.reservationSnapshot.get('userUid');
-    if (userUid === exceptUid) continue;
-
-    const currentReservedBalance =
-      reservation.userSnapshot.get('walletReservedBalance') ?? 0;
-    let updatedReservedBalance;
-    try {
-      updatedReservedBalance = releaseWalletReservation(
-        currentReservedBalance,
-        reservation.reservationSnapshot.get('amount'),
-      );
-    } catch (error) {
-      if (!(error instanceof RangeError)) throw error;
-      throw new HttpsError(
-        'failed-precondition',
-        'Số tiền đang giữ trong ví không khớp dữ liệu đấu giá.',
-      );
-    }
-
-    transaction.update(reservation.userRef, {
-      walletReservedBalance: updatedReservedBalance,
-      walletUpdatedAt: now,
-    });
-    transaction.update(reservation.reservationRef, {
-      status: 'released',
-      releasedAt: now,
+    const hasDefault = existing.docs.some((doc) =>
+      doc.data().status === 'VERIFIED' && doc.data().isDefault === true);
+    transaction.create(walletRef, {
+      userUid: uid,
+      provider,
+      accountMask,
+      status: 'VERIFIED',
+      verificationType: 'ACCOUNT_LINK',
+      isWalletLinked: true,
+      isDefault: !hasDefault,
+      providerReference: null,
+      linkedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-  }
-}
-
-function retainWinningWalletReservation(
-  transaction,
-  reservations,
-  userUid,
-  amount,
-  now,
-) {
-  const reservation = reservations.find(
-    (entry) => entry.reservationSnapshot.get('userUid') === userUid,
-  );
-  if (!reservation) return;
-
-  const previousAmount = reservation.reservationSnapshot.get('amount');
-  if (!Number.isSafeInteger(amount) ||
-      amount <= 0 ||
-      !Number.isSafeInteger(previousAmount) ||
-      previousAmount < amount) {
-    throw new HttpsError(
-      'failed-precondition',
-      'Số tiền giữ chỗ của người thắng không hợp lệ.',
-    );
-  }
-  if (previousAmount === amount) return;
-
-  const currentReservedBalance =
-    reservation.userSnapshot.get('walletReservedBalance') ?? 0;
-  let updatedReservedBalance;
-  try {
-    updatedReservedBalance = releaseWalletReservation(
-      currentReservedBalance,
-      previousAmount - amount,
-    );
-  } catch (error) {
-    if (!(error instanceof RangeError)) throw error;
-    throw new HttpsError(
-      'failed-precondition',
-      'Số tiền đang giữ trong ví không khớp dữ liệu đấu giá.',
-    );
-  }
-
-  transaction.update(reservation.userRef, {
-    walletReservedBalance: updatedReservedBalance,
-    walletUpdatedAt: now,
+    transaction.set(userWalletRef, {
+      userUid: uid,
+      isWalletLinked: true,
+      status: 'VERIFIED',
+      defaultProvider: provider,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
   });
-  transaction.update(reservation.reservationRef, {
-    amount,
-    updatedAt: FieldValue.serverTimestamp(),
+  await db.collection('notifications').doc().set({
+    userUid: uid,
+    type: 'WALLET_LINKED',
+    title: 'Liên kết ví thành công',
+    content: `${provider} đã được xác thực và có thể sử dụng trên ứng dụng.`,
+    isRead: false,
+    createdAt: FieldValue.serverTimestamp(),
   });
-}
+  return { walletId: walletRef.id, provider, status: 'VERIFIED' };
+});
+
+exports.unlinkWallet = onCall(async (request) => {
+  const uid = requireUid(request);
+  const walletId = String(request.data?.walletId ?? '').trim();
+  if (!walletId) throw new HttpsError('invalid-argument', 'walletId không hợp lệ.');
+  const walletRef = linkedWallets.doc(walletId);
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(walletRef);
+    if (!snapshot.exists || snapshot.data().userUid !== uid) {
+      throw new HttpsError('not-found', 'Không tìm thấy ví cần hủy liên kết.');
+    }
+    const remaining = await transaction.get(
+      linkedWallets.where('userUid', '==', uid).where('status', '==', 'VERIFIED'),
+    );
+    const stillLinked = remaining.docs.some((doc) => doc.id !== walletId);
+    transaction.update(walletRef, {
+      status: 'UNLINKED',
+      isWalletLinked: false,
+      isDefault: false,
+      unlinkedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    transaction.set(userWallets.doc(uid), {
+      isWalletLinked: stillLinked,
+      status: stillLinked ? 'VERIFIED' : 'NO_WALLET',
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+  return { walletId, status: 'UNLINKED' };
+});
+
+exports.setDefaultWallet = onCall(async (request) => {
+  const uid = requireUid(request);
+  const walletId = String(request.data?.walletId ?? '').trim();
+  if (!walletId) throw new HttpsError('invalid-argument', 'walletId không hợp lệ.');
+  await db.runTransaction(async (transaction) => {
+    const wallets = await transaction.get(
+      linkedWallets.where('userUid', '==', uid).where('status', '==', 'VERIFIED'),
+    );
+    let selectedProvider = null;
+    for (const doc of wallets.docs) {
+      if (doc.id === walletId) selectedProvider = doc.data().provider;
+      transaction.update(doc.ref, { isDefault: doc.id === walletId });
+    }
+    if (!selectedProvider) {
+      throw new HttpsError('not-found', 'Ví mặc định không hợp lệ.');
+    }
+    transaction.set(userWallets.doc(uid), {
+      defaultWalletId: walletId,
+      defaultProvider: selectedProvider,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+  return { walletId, isDefault: true };
+});
+
+exports.processEmailQueue = onSchedule('every 1 minutes', async () => {
+  await processEmailQueue(db);
+});
 
 exports.createWalletTopup = onCall(async (request) => {
   const uid = requireUid(request);
@@ -241,6 +338,10 @@ exports.reviewWalletTopup = onCall(async (request) => {
         walletBalance: currentBalance + topup.amount,
         walletUpdatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
+      transaction.set(userWallets.doc(topup.userUid), {
+        availableBalance: currentBalance + topup.amount,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
     }
 
     transaction.update(topupRef, {
@@ -282,6 +383,7 @@ exports.grantAdminRole = onCall(async (request) => {
 
 exports.createAuctionSession = onCall(async (request) => {
   const uid = requireUid(request);
+  await requireLinkedWallet(uid);
   const { itemId } = request.data ?? {};
   if (typeof itemId !== 'string' || itemId.trim().length === 0) {
     throw new HttpsError('invalid-argument', 'itemId không hợp lệ.');
@@ -367,11 +469,33 @@ exports.createAuctionSession = onCall(async (request) => {
     transaction.update(itemRef, { status: 'in_auction' });
   });
 
+  const [sellerSnapshot, itemSnapshot] = await Promise.all([
+    db.collection('users').doc(uid).get(),
+    itemRef.get(),
+  ]);
+  const email = sellerSnapshot.get('email') ||
+    await getAccountEmail(uid);
+  await enqueueEmail(db, {
+    userUid: uid,
+    email,
+    eventType: 'AUCTION_CREATED',
+    data: {
+      itemName: itemSnapshot.get('itemName') ?? itemSnapshot.get('name') ?? '',
+      auctionId: sessionRef.id,
+      startingPrice,
+      minimumIncrement,
+      startTime: startTime.toDate().toISOString(),
+      endTime: endTime.toDate().toISOString(),
+      auctionUrl: `https://app-dau-gia-36729.web.app/auction/${sessionRef.id}`,
+    },
+  });
+
   return { sessionId: sessionRef.id, sellerUid: uid };
 });
 
 exports.placeBid = onCall(async (request) => {
   const bidderUid = requireUid(request);
+  await requireLinkedWallet(bidderUid);
   const { sessionId } = request.data ?? {};
   if (typeof sessionId !== 'string' || sessionId.trim().length === 0) {
     throw new HttpsError('invalid-argument', 'sessionId không hợp lệ.');
@@ -565,29 +689,37 @@ exports.placeBid = onCall(async (request) => {
       createdAt: existingProxy?.createdAt ?? FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    transaction.set(reservationRef, {
-      sessionId: sessionRef.id,
-      userUid: bidderUid,
-      amount: walletReservationAmount,
-      status: 'active',
-      createdAt: existingReservation?.createdAt ?? FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-    transaction.update(userRef, {
-      walletReservedBalance: walletReservation.walletReservedBalance,
-      walletUpdatedAt: now,
-    });
-    if (buyNowTriggered) {
-      releaseSessionWalletReservations(transaction, buyNowReservations, {
-        exceptUid: bidderUid,
-        now,
-      });
-    }
+    const depositRef = deposits.doc(`${sessionRef.id}_${bidderUid}`);
+    const depositSnapshot = await transaction.get(depositRef);
     const depositAmount = Math.max(
-      session.startingPrice,
-      Math.ceil(effectiveMax * 0.1),
+      1,
+      Math.ceil(session.startingPrice * 0.1),
     );
-    transaction.set(deposits.doc(`${sessionRef.id}_${bidderUid}`), {
+    if (!depositSnapshot.exists || depositSnapshot.data().status !== 'locked') {
+      if (!Number.isSafeInteger(walletBalance) || walletBalance < depositAmount) {
+        throw new HttpsError(
+          'failed-precondition',
+          `Số dư khả dụng không đủ để khóa cọc ${depositAmount} VNĐ.`,
+        );
+      }
+      const lockedBalance = Number.isSafeInteger(userSnapshot.get('lockedBalance'))
+        ? userSnapshot.get('lockedBalance')
+        : 0;
+      transaction.update(userRef, {
+        walletBalance: walletBalance - depositAmount,
+        lockedBalance: lockedBalance + depositAmount,
+        walletUpdatedAt: FieldValue.serverTimestamp(),
+      });
+      transaction.set(userWallets.doc(bidderUid), {
+        userUid: bidderUid,
+        availableBalance: walletBalance - depositAmount,
+        lockedBalance: lockedBalance + depositAmount,
+        isWalletLinked: true,
+        status: 'VERIFIED',
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    transaction.set(depositRef, {
       sessionId: sessionRef.id,
       userUid: bidderUid,
       role: 'bidder',
@@ -713,6 +845,23 @@ exports.placeBid = onCall(async (request) => {
     }
   });
 
+  const bidderEmail = await getAccountEmail(bidderUid);
+  await enqueueEmail(db, {
+    userUid: bidderUid,
+    email: bidderEmail,
+    eventType: 'BID_PLACED',
+    data: {
+      auctionId: sessionRef.id,
+      maxBid: submittedMax,
+      currentBid: result.currentHighestBid ?? result.winningBid ?? submittedMax,
+      depositLocked: Math.max(1, Math.ceil(
+        (await sessions.doc(sessionRef.id).get()).get('startingPrice') * 0.1,
+      )),
+      bidTime: acceptedAt.toDate().toISOString(),
+      auctionUrl: `https://app-dau-gia-36729.web.app/auction/${sessionRef.id}`,
+    },
+  });
+
   return {
     bidId: bidRef.id,
     bidderUid,
@@ -822,9 +971,12 @@ exports.updateAuctionStatuses = onSchedule('every 1 minutes', async () => {
           auctionSessionId: FieldValue.delete(),
         });
         for (const proxy of proxies) {
-          transaction.set(deposits.doc(`${sessionDoc.id}_${proxy.bidderUid}`), {
-            status: 'released', releasedAt: now, updatedAt: FieldValue.serverTimestamp(),
-          }, { merge: true });
+          await releaseLockedDeposit(
+            transaction,
+            `${sessionDoc.id}_${proxy.bidderUid}`,
+            proxy.bidderUid,
+            now,
+          );
         }
         return;
       }
@@ -855,11 +1007,12 @@ exports.updateAuctionStatuses = onSchedule('every 1 minutes', async () => {
           updatedAt: FieldValue.serverTimestamp(),
         });
         for (const proxy of proxies) {
-          transaction.set(deposits.doc(`${sessionDoc.id}_${proxy.bidderUid}`), {
-            status: 'released',
-            releasedAt: now,
-            updatedAt: FieldValue.serverTimestamp(),
-          }, { merge: true });
+          await releaseLockedDeposit(
+            transaction,
+            `${sessionDoc.id}_${proxy.bidderUid}`,
+            proxy.bidderUid,
+            now,
+          );
         }
         return;
       }
@@ -874,7 +1027,7 @@ exports.updateAuctionStatuses = onSchedule('every 1 minutes', async () => {
       const winnerDepositSnapshot = await transaction.get(winnerDepositRef);
       const winnerDepositAmount = winnerDepositSnapshot.exists
         ? (winnerDepositSnapshot.data().amount ?? 0)
-        : Math.max(session.startingPrice, Math.ceil(winner.maxAmount * 0.1));
+        : Math.max(1, Math.ceil(session.startingPrice * 0.1));
       const totalAmount = calculateOrderTotal({
         winningBid,
         platformFeeRate,
@@ -947,9 +1100,12 @@ exports.updateAuctionStatuses = onSchedule('every 1 minutes', async () => {
 
       for (const proxy of proxies) {
         if (proxy.bidderUid === winner.bidderUid) continue;
-        transaction.set(deposits.doc(`${sessionDoc.id}_${proxy.bidderUid}`), {
-          status: 'released', releasedAt: now, updatedAt: FieldValue.serverTimestamp(),
-        }, { merge: true });
+        await releaseLockedDeposit(
+          transaction,
+          `${sessionDoc.id}_${proxy.bidderUid}`,
+          proxy.bidderUid,
+          now,
+        );
       }
 
       transaction.update(sessionDoc.ref, {
@@ -1049,10 +1205,55 @@ exports.paymentWebhook = onCall(async (request) => {
     transaction.update(escrowTransactions.doc(`escrow_${orderId}`), {
       status: 'ESCROW_HELD',
       paidAmount,
+      amount: (Number.isSafeInteger(order.depositApplied) ? order.depositApplied : 0) + paidAmount,
       paymentReference,
       paidAt: now,
       updatedAt: FieldValue.serverTimestamp(),
     });
+    const depositRef = deposits.doc(`${order.auctionId}_${order.buyerUid}`);
+    const depositSnapshot = await transaction.get(depositRef);
+    if (depositSnapshot.exists) {
+      const deposit = depositSnapshot.data();
+      const depositAmount = Number.isSafeInteger(deposit.amount) ? deposit.amount : 0;
+      if (deposit.status === 'locked' || deposit.status === 'applied_to_order') {
+        const buyerRef = db.collection('users').doc(order.buyerUid);
+        const buyerSnapshot = await transaction.get(buyerRef);
+        if (buyerSnapshot.exists) {
+          const lockedBalance = Number.isSafeInteger(buyerSnapshot.get('lockedBalance'))
+            ? buyerSnapshot.get('lockedBalance')
+            : depositAmount;
+          transaction.update(buyerRef, {
+            lockedBalance: Math.max(0, lockedBalance - depositAmount),
+            walletUpdatedAt: FieldValue.serverTimestamp(),
+          });
+          transaction.set(userWallets.doc(order.buyerUid), {
+            lockedBalance: Math.max(0, lockedBalance - depositAmount),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+      }
+      transaction.update(depositRef, {
+        status: 'consumed',
+        consumedAt: now,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+  });
+  const paidOrderSnapshot = await orderRef.get();
+  const paidOrder = paidOrderSnapshot.data() ?? {};
+  const winnerEmail = await getAccountEmail(paidOrder.buyerUid);
+  await enqueueEmail(db, {
+    userUid: paidOrder.buyerUid,
+    email: winnerEmail,
+    eventType: 'WINNER_PAYMENT_SUCCESS',
+    data: {
+      orderId,
+      winningBid: paidOrder.winningBid ?? 0,
+      depositApplied: paidOrder.depositApplied ?? 0,
+      paidAmount,
+      fullName: paidOrder.shippingAddress?.fullName ?? '',
+      address: paidOrder.shippingAddress?.address ?? '',
+    },
   });
   return { orderId, status: 'PAID' };
 });
@@ -1114,9 +1315,44 @@ exports.completeOrder = onCall(async (request) => {
     }
     if (order.status !== 'DELIVERED') throw new HttpsError('failed-precondition', 'Chỉ hoàn tất đơn đã giao.');
     const now = Timestamp.now();
-    transaction.update(orderRef, { status: 'COMPLETED', completedAt: now, updatedAt: FieldValue.serverTimestamp() });
+    const settlement = calculateSellerSettlement({
+      winningBid: order.winningBid,
+      platformFeeRate: Number.isFinite(order.platformFeeRate)
+        ? order.platformFeeRate
+        : 0.05,
+    });
+    const platformFee = settlement.platformFee;
+    const netAmount = settlement.netAmount;
+    const sellerRef = db.collection('users').doc(order.sellerUid);
+    const sellerSnapshot = await transaction.get(sellerRef);
+    if (!sellerSnapshot.exists) {
+      throw new HttpsError('not-found', 'Không tìm thấy ví người bán.');
+    }
+    const sellerAvailable = Number.isSafeInteger(sellerSnapshot.get('walletBalance'))
+      ? sellerSnapshot.get('walletBalance')
+      : 0;
+    transaction.update(sellerRef, {
+      walletBalance: sellerAvailable + netAmount,
+      walletUpdatedAt: FieldValue.serverTimestamp(),
+    });
+    transaction.set(userWallets.doc(order.sellerUid), {
+      userUid: order.sellerUid,
+      availableBalance: sellerAvailable + netAmount,
+      isWalletLinked: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    transaction.update(orderRef, {
+      status: 'COMPLETED',
+      platformFee,
+      netAmount,
+      completedAt: now,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     transaction.update(escrowTransactions.doc(`escrow_${orderId}`), {
       status: 'RELEASED_TO_SELLER',
+      platformFee,
+      netAmount,
+      releasedAmount: netAmount,
       releasedAt: now,
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -1126,6 +1362,21 @@ exports.completeOrder = onCall(async (request) => {
       completedAt: now,
       updatedAt: FieldValue.serverTimestamp(),
     });
+  });
+  const completedSnapshot = await orderRef.get();
+  const completedOrder = completedSnapshot.data() ?? {};
+  const sellerEmail = await getAccountEmail(completedOrder.sellerUid);
+  await enqueueEmail(db, {
+    userUid: completedOrder.sellerUid,
+    email: sellerEmail,
+    eventType: 'SELLER_PAYOUT_SUCCESS',
+    data: {
+      orderId,
+      winningBid: completedOrder.winningBid ?? 0,
+      platformFee: completedOrder.platformFee ?? 0,
+      platformFeeRate: ((completedOrder.platformFeeRate ?? 0.05) * 100).toFixed(1),
+      netAmount: completedOrder.netAmount ?? 0,
+    },
   });
   return { orderId, status: 'COMPLETED' };
 });
@@ -1169,11 +1420,12 @@ exports.handlePaymentTimeout = onSchedule('every 10 minutes', async () => {
         cancelledReason: 'PAYMENT_TIMEOUT',
         updatedAt: FieldValue.serverTimestamp(),
       });
-      transaction.set(deposits.doc(`${order.auctionId}_${order.buyerUid}`), {
-        status: 'forfeited',
-        forfeitedAt: now,
-        updatedAt: FieldValue.serverTimestamp(),
-      }, { merge: true });
+      await forfeitLockedDeposit(
+        transaction,
+        `${order.auctionId}_${order.buyerUid}`,
+        order.buyerUid,
+        now,
+      );
       transaction.update(escrowTransactions.doc(`escrow_${orderDoc.id}`), {
         status: 'FORFEITED',
         forfeitedAt: now,

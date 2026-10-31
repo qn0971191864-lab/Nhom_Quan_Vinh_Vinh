@@ -185,8 +185,22 @@ function calculateOrderTotal({
 }) {
   return Math.max(
     0,
-    winningBid + Math.round(winningBid * platformFeeRate) + shippingFee - depositApplied,
+    winningBid + shippingFee - depositApplied,
   );
+}
+
+function calculateSellerSettlement({ winningBid, platformFeeRate = 0.05 }) {
+  if (!Number.isSafeInteger(winningBid) || winningBid < 0) {
+    throw new RangeError('Winning bid must be a non-negative safe integer.');
+  }
+  if (!Number.isFinite(platformFeeRate) || platformFeeRate < 0 || platformFeeRate >= 1) {
+    throw new RangeError('Platform fee rate is invalid.');
+  }
+  const platformFee = Math.round(winningBid * platformFeeRate);
+  return {
+    platformFee,
+    netAmount: Math.max(0, winningBid - platformFee),
+  };
 }
 
 function getExtendedEndTime({
@@ -224,6 +238,5 @@ module.exports = {
   resolveProxyBid,
   calculateFinalWinningPrice,
   calculateOrderTotal,
-  calculateWalletReservation,
-  releaseWalletReservation,
+  calculateSellerSettlement,
 };

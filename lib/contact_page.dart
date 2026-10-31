@@ -524,6 +524,91 @@ class _ContactPageState extends State<ContactPage> {
             );
           },
         ),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('linked_wallets')
+              .where('userUid', isEqualTo: uid)
+              .where('status', isEqualTo: 'VERIFIED')
+              .snapshots(),
+          builder: (context, walletSnapshot) {
+            final wallets = walletSnapshot.data?.docs ?? [];
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'PHƯƠNG THỨC THANH TOÁN',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFC49A55),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: _showLinkWalletSheet,
+                      icon: const Icon(Icons.add_link_rounded),
+                      label: const Text('Liên kết'),
+                    ),
+                  ],
+                ),
+                if (wallets.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      'Chưa có ví nào được liên kết. Bạn không thể tạo phiên hoặc đặt giá.',
+                      style: TextStyle(color: Color(0xFFFFC107)),
+                    ),
+                  ),
+                ...wallets.map((wallet) {
+                  final data = wallet.data();
+                  final provider = data['provider'] as String? ?? 'WALLET';
+                  final accountMask = data['accountMask'] as String? ?? '';
+                  final isDefault = data['isDefault'] == true;
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.account_balance_wallet_rounded),
+                      title: Text(provider),
+                      subtitle: Text('**** $accountMask · Đã xác thực'),
+                      trailing: PopupMenuButton<String>(
+                        onSelected: (value) async {
+                          if (value == 'default') {
+                            await FirebaseFunctions.instance
+                                .httpsCallable('setDefaultWallet')
+                                .call({'walletId': wallet.id});
+                            _showMessage('Đã đặt ví làm mặc định.');
+                          } else if (value == 'unlink') {
+                            await FirebaseFunctions.instance
+                                .httpsCallable('unlinkWallet')
+                                .call({'walletId': wallet.id});
+                            _showMessage('Đã hủy liên kết ví.');
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          if (!isDefault)
+                            const PopupMenuItem(
+                              value: 'default',
+                              child: Text('Đặt làm mặc định'),
+                            ),
+                          const PopupMenuItem(
+                            value: 'unlink',
+                            child: Text('Hủy liên kết'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            );
+          },
+        ),
         TextField(
           controller: _topupAmountController,
           keyboardType: TextInputType.number,
@@ -774,6 +859,92 @@ class _ContactPageState extends State<ContactPage> {
         ),
       ],
     );
+  }
+
+  Future<void> _showLinkWalletSheet() async {
+    var provider = 'MOMO';
+    final accountMaskController = TextEditingController();
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Liên kết ví điện tử',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: provider,
+                    items: const [
+                      DropdownMenuItem(value: 'MOMO', child: Text('MoMo')),
+                      DropdownMenuItem(value: 'ZALOPAY', child: Text('ZaloPay')),
+                      DropdownMenuItem(value: 'VNPAY', child: Text('VNPay')),
+                      DropdownMenuItem(value: 'SHOPEEPAY', child: Text('ShopeePay')),
+                      DropdownMenuItem(value: 'BANK_VIETQR', child: Text('Thẻ ngân hàng / VietQR')),
+                    ],
+                    onChanged: (value) =>
+                        setSheetState(() => provider = value ?? 'MOMO'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: accountMaskController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 4,
+                    decoration: const InputDecoration(
+                      labelText: '4 chữ số cuối tài khoản',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(sheetContext, true),
+                      child: const Text('Xác thực & liên kết'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (result == true) {
+      final mask = accountMaskController.text.trim();
+      if (!RegExp(r'^\d{4}$').hasMatch(mask)) {
+        accountMaskController.dispose();
+        _showMessage('Vui lòng nhập đúng 4 chữ số cuối tài khoản.');
+        return;
+      }
+      setState(() => _walletBusy = true);
+      try {
+        await FirebaseFunctions.instance.httpsCallable('linkWallet').call({
+          'provider': provider,
+          'accountMask': mask,
+        });
+        _showMessage('Liên kết ví thành công.');
+      } catch (error) {
+        _showMessage('Không thể liên kết ví: $error');
+      } finally {
+        accountMaskController.dispose();
+        if (mounted) setState(() => _walletBusy = false);
+      }
+    } else {
+      accountMaskController.dispose();
+    }
   }
 
   Future<void> _requestWalletTopup() async {

@@ -250,6 +250,33 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
       );
     } catch (error) {
       if (mounted) {
+        if (error.toString().contains('liên kết ít nhất một ví')) {
+          await showDialog<void>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: const Text('Cần liên kết ví'),
+              content: const Text(
+                'Bạn phải liên kết ít nhất một ví đã xác thực trước khi tạo phiên đấu giá.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Để sau'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const ContactPage()),
+                    );
+                  },
+                  child: const Text('Liên kết ví ngay'),
+                ),
+              ],
+            ),
+          );
+          return;
+        }
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Không thể tạo phiên: $error')));
