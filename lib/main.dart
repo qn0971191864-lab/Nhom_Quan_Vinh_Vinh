@@ -15,6 +15,7 @@ void main() async {
     appId: "1:230200001665:android:885cf93911a49dd4e5b980",
     messagingSenderId: "230200001665",
     projectId: "app-dau-gia-36729",
+    storageBucket: "app-dau-gia-36729.firebasestorage.app",
   );
   Object? initializationError;
   try {

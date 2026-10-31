@@ -11,11 +11,22 @@ class AuctionSession extends ProjectModel<String> {
   String sellerUid = '';
   int startingPrice = 0;
   int minimumIncrement = 1;
+  int? buyNowPrice;
+  int? reservePrice;
+  bool reservePriceMet = true;
   int currentHighestBid = 0;
   String? highestBidderUid;
   String startTime = '';
   String endTime = '';
   String? result;
+  bool antiSnipingEnabled = true;
+  int extensionWindowMinutes = 2;
+  int extensionMinutes = 3;
+  int maxExtensions = 10;
+  int extensionCount = 0;
+  String? orderId;
+  String? winnerUid;
+  int? winningBid;
 
   /// Trạng thái phiên: 'scheduled', 'active', 'sold', 'ended', 'cancelled'
   String status = 'scheduled';
@@ -43,11 +54,22 @@ class AuctionSession extends ProjectModel<String> {
     this.sellerUid = '',
     this.startingPrice = 0,
     this.minimumIncrement = 1,
+    this.buyNowPrice,
+    this.reservePrice,
+    this.reservePriceMet = true,
     this.currentHighestBid = 0,
     this.highestBidderUid,
     this.startTime = '',
     this.endTime = '',
     this.result,
+    this.antiSnipingEnabled = true,
+    this.extensionWindowMinutes = 2,
+    this.extensionMinutes = 3,
+    this.maxExtensions = 10,
+    this.extensionCount = 0,
+    this.orderId,
+    this.winnerUid,
+    this.winningBid,
     this.status = 'scheduled',
   });
 
@@ -94,12 +116,20 @@ class AuctionSession extends ProjectModel<String> {
       'sellerUid': sellerUid,
       'startingPrice': startingPrice,
       'minimumIncrement': minimumIncrement,
+      'buyNowPrice': buyNowPrice,
+      'reservePrice': reservePrice,
+      'reservePriceMet': reservePriceMet,
       'currentHighestBid': currentHighestBid,
       'highestBidderUid': highestBidderUid,
       'startTime': Timestamp.fromDate(_parseDateTime(startTime, 'startTime')),
       'endTime': Timestamp.fromDate(_parseDateTime(endTime, 'endTime')),
       'status': status == 'upcoming' ? 'scheduled' : status,
       'result': result,
+      'antiSnipingEnabled': antiSnipingEnabled,
+      'extensionWindowMinutes': extensionWindowMinutes,
+      'extensionMinutes': extensionMinutes,
+      'maxExtensions': maxExtensions,
+      'extensionCount': extensionCount,
     };
   }
 
@@ -119,6 +149,9 @@ class AuctionSession extends ProjectModel<String> {
           (map['minimumIncrement'] as num?)?.toInt() ??
           (map['minimum_increment'] as num?)?.toInt() ??
           1,
+      buyNowPrice: (map['buyNowPrice'] as num?)?.toInt(),
+      reservePrice: (map['reservePrice'] as num?)?.toInt(),
+      reservePriceMet: map['reservePriceMet'] as bool? ?? true,
       currentHighestBid:
           (map['currentHighestBid'] as num?)?.toInt() ??
           (map['current_highest_bid'] as num?)?.toInt() ??
@@ -130,6 +163,18 @@ class AuctionSession extends ProjectModel<String> {
       startTime: _dateTimeValue(map['startTime'] ?? map['start_time']) ?? '',
       endTime: _dateTimeValue(map['endTime'] ?? map['end_time']) ?? '',
       result: map['result'] as String?,
+      antiSnipingEnabled: map['antiSnipingEnabled'] as bool? ?? true,
+      extensionWindowMinutes:
+          (map['extensionWindowMinutes'] as num?)?.toInt() ?? 2,
+      extensionMinutes: (map['extensionMinutes'] as num?)?.toInt() ?? 3,
+      maxExtensions: (map['maxExtensions'] as num?)?.toInt() ?? 10,
+      extensionCount: (map['extensionCount'] as num?)?.toInt() ?? 0,
+      orderId: map['orderId'] as String?,
+      winnerUid:
+          map['winnerUid'] as String? ?? map['highestBidderUid'] as String?,
+      winningBid:
+          (map['winningBid'] as num?)?.toInt() ??
+          (map['currentHighestBid'] as num?)?.toInt(),
       status: storedStatus == 'upcoming' ? 'scheduled' : storedStatus,
     );
   }

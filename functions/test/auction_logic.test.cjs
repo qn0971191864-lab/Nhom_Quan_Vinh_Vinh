@@ -2,8 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   auctionOutcome,
+  auctionOutcomeWithReserve,
+  calculateFinalWinningPrice,
+  calculateOrderTotal,
+  getExtendedEndTime,
   isBidWindowOpen,
   minimumBidAmount,
+  resolveProxyBid,
 } = require('../auction_logic');
 
 test('expired auction with bids records a winner and sold result', () => {
@@ -93,4 +98,122 @@ test('closed sessions never accept bids', () => {
       false,
     );
   }
+});
+
+test('first proxy bid sets the starting price as effective price', () => {
+  const result = resolveProxyBid({
+    startingPrice: 100000,
+    minimumIncrement: 5000,
+    submittedMax: 150000,
+    currentWinnerUid: null,
+    currentPrice: 0,
+    currentWinnerMax: 0,
+    challengerUid: 'A',
+  });
+  assert.equal(result.winnerUid, 'A');
+  assert.equal(result.effectivePrice, 100000);
+});
+
+test('higher proxy beats the leader by only one increment when possible', () => {
+  const result = resolveProxyBid({
+    startingPrice: 100000,
+    minimumIncrement: 5000,
+    submittedMax: 130000,
+    currentWinnerUid: 'A',
+    currentPrice: 105000,
+    currentWinnerMax: 120000,
+    challengerUid: 'B',
+  });
+  assert.equal(result.winnerUid, 'B');
+  assert.equal(result.effectivePrice, 125000);
+});
+
+test('lower proxy keeps the first leader and raises the effective price', () => {
+  const result = resolveProxyBid({
+    startingPrice: 100000,
+    minimumIncrement: 5000,
+    submittedMax: 115000,
+    currentWinnerUid: 'A',
+    currentPrice: 105000,
+    currentWinnerMax: 130000,
+    challengerUid: 'B',
+  });
+  assert.equal(result.winnerUid, 'A');
+  assert.equal(result.effectivePrice, 120000);
+});
+
+test('equal proxy maximum keeps the first bidder as winner', () => {
+  const result = resolveProxyBid({
+    startingPrice: 100000,
+    minimumIncrement: 5000,
+    submittedMax: 130000,
+    currentWinnerUid: 'A',
+    currentPrice: 130000,
+    currentWinnerMax: 130000,
+    challengerUid: 'B',
+  });
+  assert.equal(result.winnerUid, 'A');
+});
+
+test('soft-close extends by three minutes in the final window', () => {
+  const result = getExtendedEndTime({
+    now: 1000000,
+    endTime: 1060000,
+    extensionWindowMs: 2 * 60 * 1000,
+    extensionMs: 3 * 60 * 1000,
+    extensionCount: 2,
+    maxExtensions: 10,
+  });
+  assert.equal(result.extended, true);
+  assert.equal(result.extensionCount, 3);
+  assert.equal(result.endTime, 1180000);
+});
+
+test('soft-close stops at the configured maximum', () => {
+  const result = getExtendedEndTime({
+    now: 1000000,
+    endTime: 1060000,
+    extensionWindowMs: 2 * 60 * 1000,
+    extensionMs: 3 * 60 * 1000,
+    extensionCount: 10,
+    maxExtensions: 10,
+  });
+  assert.equal(result.extended, false);
+});
+
+test('final winning price uses one increment above the runner-up max', () => {
+  assert.equal(calculateFinalWinningPrice({
+    startingPrice: 100000,
+    minimumIncrement: 5000,
+    highestMax: 250000,
+    secondMax: 180000,
+  }), 185000);
+});
+
+test('single bidder wins at the starting price', () => {
+  assert.equal(calculateFinalWinningPrice({
+    startingPrice: 100000,
+    minimumIncrement: 5000,
+    highestMax: 250000,
+  }), 100000);
+});
+
+test('order total applies platform fee and winner deposit', () => {
+  assert.equal(calculateOrderTotal({
+    winningBid: 185000,
+    platformFeeRate: 0.05,
+    shippingFee: 30000,
+    depositApplied: 18500,
+  }), 205750);
+});
+
+test('reserve not met expires the auction', () => {
+  const result = auctionOutcomeWithReserve({
+    currentHighestBid: 900000,
+    highestBidderUid: 'A',
+    reservePrice: 1000000,
+  });
+  assert.equal(result.status, 'expired');
+  assert.equal(result.result, 'reserve_not_met');
+  assert.equal(result.winnerUid, null);
 });

@@ -9,6 +9,7 @@ import 'contact_page.dart';
 import 'create_auction_page.dart';
 import 'item.dart';
 import 'news_page.dart';
+import 'auction_payment_page.dart';
 import 'services/firebase_service.dart';
 
 class TrangDauGiaPage extends StatefulWidget {
@@ -248,6 +249,47 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
               ),
             ),
           ),
+          if ((session.status == 'won' || session.status == 'sold') &&
+              (session.winnerUid?.isNotEmpty == true ||
+                  session.highestBidderUid?.isNotEmpty == true)) ...[
+            Builder(
+              builder: (context) {
+                final currentUid =
+                    firebase_auth.FirebaseAuth.instance.currentUser?.uid;
+                final winnerUid =
+                    session.winnerUid ?? session.highestBidderUid ?? '';
+                if (currentUid == null || currentUid != winnerUid) {
+                  return const SizedBox.shrink();
+                }
+                final orderId =
+                    session.orderId?.trim().isNotEmpty == true
+                        ? session.orderId!.trim()
+                        : 'order_${session.sessionId}';
+                return Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Card(
+                    color: Theme.of(context).colorScheme.primaryContainer,
+                    child: ListTile(
+                      leading: const Icon(Icons.emoji_events_rounded),
+                      title: const Text('Bạn đã thắng phiên đấu giá!'),
+                      subtitle: const Text(
+                        'Thanh toán trong 48 giờ để giữ vật phẩm.',
+                      ),
+                      trailing: FilledButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AuctionPaymentPage(orderId: orderId),
+                          ),
+                        ),
+                        child: const Text('Thanh toán'),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
           SizedBox(
             height: 220,
             child: Card(
@@ -271,7 +313,7 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
             onPressed: canBid ? () => _handleQuickBid(session) : null,
             child: Text(
               canBid
-                  ? (_isSignedIn ? 'Đặt giá nhanh' : 'Đăng nhập để đặt giá')
+                  ? (_isSignedIn ? 'Đặt giá tối đa' : 'Đăng nhập để đặt giá')
                   : startTime != null && now.isBefore(startTime)
                   ? 'Phiên chưa bắt đầu'
                   : 'Phiên không nhận đặt giá',
@@ -349,19 +391,59 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
       return;
     }
 
-    final amount = session.currentHighestBid > 0
+    final suggestedAmount = session.currentHighestBid > 0
         ? session.currentHighestBid + session.minimumIncrement
         : session.startingPrice;
+    final controller = TextEditingController(
+      text: suggestedAmount.toString(),
+    );
+    final maxAmount = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Đặt giá tự động'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Giá tối đa của bạn (VNĐ)',
+              helperText:
+                  'Hệ thống sẽ tự tăng giá thay bạn đến mức tối đa này.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text.trim());
+                Navigator.pop(dialogContext, value);
+              },
+              child: const Text('Đặt giá'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (maxAmount == null) return;
     try {
-      final bid = Bid(amount: amount, sessionId: session.sessionId);
-      await FirebaseService.instance.placeBid(
+      final bid = Bid(amount: maxAmount, sessionId: session.sessionId);
+      final data = await FirebaseService.instance.placeBid(
         sessionId: session.sessionId,
         bid: bid,
       );
       if (!mounted) return;
+      final currentBid = data['currentHighestBid'] as int?;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Đặt giá thành công: ${_formatPrice(amount)} VNĐ'),
+          content: Text(
+            currentBid == null
+                ? 'Đặt giá tự động thành công'
+                : 'Giá đấu hiện tại: ${_formatPrice(currentBid)} VNĐ',
+          ),
         ),
       );
     } catch (error) {

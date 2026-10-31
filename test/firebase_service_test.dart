@@ -46,6 +46,7 @@ void main() {
         expect(callables.calls.single.name, 'placeBid');
         expect(callables.calls.single.data, {
           'sessionId': 'session-1',
+          'maxAmount': 150,
           'amount': 150,
         });
         expect(bid.sessionId, 'session-1');
@@ -114,21 +115,29 @@ void main() {
         FirebaseService.formatShortUid('AfVuzcugHAY2VtgQbiUAyH7HOZG3'),
         'AfVu...OZG3',
       );
-      expect(
-        FirebaseService.formatShortUid('user_vinh_001'),
-        'user..._001',
-      );
+      expect(FirebaseService.formatShortUid('user_vinh_001'), 'user..._001');
     });
 
-    test('getUserDisplayName falls back to short UID when uninitialized', () async {
-      final name = await service.getUserDisplayName('AfVuzcugHAY2VtgQbiUAyH7HOZG3');
-      expect(name, 'AfVu...OZG3');
-      expect(FirebaseService.isCachedDisplayName('AfVuzcugHAY2VtgQbiUAyH7HOZG3'), isTrue);
-      expect(FirebaseService.getCachedDisplayName('AfVuzcugHAY2VtgQbiUAyH7HOZG3'), 'AfVu...OZG3');
+    test(
+      'getUserDisplayName falls back to short UID when uninitialized',
+      () async {
+        final name = await service.getUserDisplayName(
+          'AfVuzcugHAY2VtgQbiUAyH7HOZG3',
+        );
+        expect(name, 'AfVu...OZG3');
+        expect(
+          FirebaseService.isCachedDisplayName('AfVuzcugHAY2VtgQbiUAyH7HOZG3'),
+          isTrue,
+        );
+        expect(
+          FirebaseService.getCachedDisplayName('AfVuzcugHAY2VtgQbiUAyH7HOZG3'),
+          'AfVu...OZG3',
+        );
 
-      final emptyName = await service.getUserDisplayName('');
-      expect(emptyName, 'Người tham gia');
-    });
+        final emptyName = await service.getUserDisplayName('');
+        expect(emptyName, 'Người tham gia');
+      },
+    );
   });
 }
 

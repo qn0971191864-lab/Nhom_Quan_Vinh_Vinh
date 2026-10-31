@@ -7,6 +7,7 @@ import '../auction_session.dart';
 import '../item.dart';
 import '../user.dart';
 import '../category.dart';
+import '../auction_order.dart';
 
 abstract interface class AuctionCallableClient {
   Future<Map<String, dynamic>> call(String name, Map<String, dynamic> data);
@@ -57,6 +58,7 @@ class FirebaseService {
   static const String sessionsCollection = 'auction_sessions';
   static const String bidsCollection = 'bids';
   static const String usersCollection = 'users';
+  static const String ordersCollection = 'orders';
 
   /// Singleton instance
   static final FirebaseService instance = FirebaseService();
@@ -128,7 +130,10 @@ class FirebaseService {
   // ===========================================================================
 
   /// Gửi lượt đặt giá tới Cloud Function; danh tính người đặt lấy từ token Auth.
-  Future<void> placeBid({required String sessionId, required Bid bid}) async {
+  Future<Map<String, dynamic>> placeBid({
+    required String sessionId,
+    required Bid bid,
+  }) async {
     if (sessionId.trim().isEmpty) {
       throw ArgumentError('Mã phiên đấu giá không được để trống.');
     }
@@ -138,6 +143,7 @@ class FirebaseService {
 
     final data = await _callables.call('placeBid', {
       'sessionId': sessionId.trim(),
+      'maxAmount': bid.amount,
       'amount': bid.amount,
     });
     bid
@@ -147,6 +153,7 @@ class FirebaseService {
       ..bidTime = data['bidTime'] as String? ?? '';
     final parsedId = int.tryParse(data['bidId'] as String? ?? '');
     if (parsedId != null) bid.bidId = parsedId;
+    return data;
   }
 
   // ===========================================================================
@@ -222,6 +229,24 @@ class FirebaseService {
     });
   }
 
+  Stream<AuctionOrder?> getOrderStream(String orderId) {
+    return _firestore.collection(ordersCollection).doc(orderId).snapshots().map((
+      doc,
+    ) {
+      if (!doc.exists || doc.data() == null) return null;
+      return AuctionOrder.fromMap(doc.data()!, doc.id);
+    });
+  }
+
+  Future<AuctionOrder?> getOrderById(String orderId) async {
+    final doc = await _firestore
+        .collection(ordersCollection)
+        .doc(orderId)
+        .get();
+    if (!doc.exists || doc.data() == null) return null;
+    return AuctionOrder.fromMap(doc.data()!, doc.id);
+  }
+
   /// Tạo phiên qua Cloud Function, nơi xác thực quyền sở hữu và khởi tạo dữ liệu.
   Future<String> createAuctionSession(AuctionSession session) async {
     if (session.itemId.trim().isEmpty ||
@@ -239,6 +264,12 @@ class FirebaseService {
       'itemId': session.itemId,
       'startingPrice': session.startingPrice,
       'minimumIncrement': session.minimumIncrement,
+      'buyNowPrice': session.buyNowPrice,
+      'reservePrice': session.reservePrice,
+      'antiSnipingEnabled': session.antiSnipingEnabled,
+      'extensionWindowMinutes': session.extensionWindowMinutes,
+      'extensionMinutes': session.extensionMinutes,
+      'maxExtensions': session.maxExtensions,
       'startTime': startTime.toUtc().toIso8601String(),
       'endTime': endTime.toUtc().toIso8601String(),
     });
@@ -253,6 +284,56 @@ class FirebaseService {
 
   Future<void> cancelAuctionSession(String sessionId) async {
     await _callables.call('cancelAuctionSession', {'sessionId': sessionId});
+  }
+
+  Future<Map<String, dynamic>> confirmOrderAddress({
+    required String orderId,
+    required String fullName,
+    required String phone,
+    required String address,
+  }) async {
+    return _callables.call('confirmOrderAddress', {
+      'orderId': orderId,
+      'shippingAddress': {
+        'fullName': fullName,
+        'phone': phone,
+        'address': address,
+      },
+    });
+  }
+
+  Future<Map<String, dynamic>> paymentWebhook(
+    Map<String, dynamic> payload,
+  ) async {
+    return _callables.call('paymentWebhook', payload);
+  }
+
+  Future<Map<String, dynamic>> shipOrder(
+    String orderId, {
+    String? trackingCode,
+  }) async {
+    return _callables.call('shipOrder', {
+      'orderId': orderId,
+      'trackingCode': trackingCode,
+    });
+  }
+
+  Future<Map<String, dynamic>> confirmDelivery(String orderId) async {
+    return _callables.call('confirmDelivery', {'orderId': orderId});
+  }
+
+  Future<Map<String, dynamic>> completeOrder(String orderId) async {
+    return _callables.call('completeOrder', {'orderId': orderId});
+  }
+
+  Future<Map<String, dynamic>> respondSecondChance({
+    required String offerId,
+    required String decision,
+  }) async {
+    return _callables.call('respondSecondChance', {
+      'offerId': offerId,
+      'decision': decision,
+    });
   }
 
   // ===========================================================================

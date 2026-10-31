@@ -40,6 +40,8 @@ dependencies:
   cloud_functions: ^7.0.1
   shared_preferences: ^2.5.3
   url_launcher: ^6.3.2
+  file_picker: ^13.3.0
+  firebase_storage: ^14.0.1
 
 dev_dependencies:
   flutter_test:

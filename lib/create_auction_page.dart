@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 
 import 'auction_session.dart';
@@ -17,20 +21,26 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _imageController = TextEditingController();
   final _priceController = TextEditingController();
   final _incrementController = TextEditingController(text: '100000');
+  final _buyNowController = TextEditingController();
+  final _reserveController = TextEditingController();
   DateTime? _startTime;
   DateTime? _endTime;
   bool _busy = false;
+  bool _uploadingImage = false;
+  Uint8List? _selectedImageBytes;
+  String? _selectedImageName;
+  String _imageUrl = '';
 
   @override
   void dispose() {
     _nameController.dispose();
     _descriptionController.dispose();
-    _imageController.dispose();
     _priceController.dispose();
     _incrementController.dispose();
+    _buyNowController.dispose();
+    _reserveController.dispose();
     super.dispose();
   }
 
@@ -66,6 +76,63 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
     });
   }
 
+  Future<void> _pickAndUploadImage() async {
+    if (_uploadingImage) return;
+    try {
+      final file = await FilePicker.pickFile(type: FileType.image);
+      if (file == null || !mounted) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
+        throw Exception('Không thể đọc dữ liệu ảnh.');
+      }
+
+      setState(() {
+        _uploadingImage = true;
+        _selectedImageBytes = bytes;
+        _selectedImageName = file.name;
+      });
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Vui lòng đăng nhập lại.');
+
+      final extension = file.extension?.toLowerCase();
+      final safeExtension = extension != null && extension.isNotEmpty
+          ? '.$extension'
+          : '';
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}';
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'auction_images/${user.uid}/$fileName$safeExtension',
+      );
+      await storageRef.putData(
+        bytes,
+        SettableMetadata(contentType: _contentType(extension)),
+      );
+      final downloadUrl = await storageRef.getDownloadURL();
+      if (!mounted) return;
+      setState(() => _imageUrl = downloadUrl);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text('Không thể tải ảnh lên: $error'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
+    }
+  }
+
+  String? _contentType(String? extension) => switch (extension) {
+    'png' => 'image/png',
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'gif' => 'image/gif',
+    'webp' => 'image/webp',
+    'bmp' => 'image/bmp',
+    _ => null,
+  };
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final user = FirebaseAuth.instance.currentUser;
@@ -98,6 +165,8 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
     try {
       final price = int.parse(_priceController.text.trim());
       final increment = int.parse(_incrementController.text.trim());
+      final buyNowPrice = int.tryParse(_buyNowController.text.trim());
+      final reservePrice = int.tryParse(_reserveController.text.trim());
       final itemId = DateTime.now().millisecondsSinceEpoch;
       await FirebaseService.instance.addItem(
         Item(
@@ -105,7 +174,7 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
           itemName: _nameController.text.trim(),
           startingPrice: price,
           description: _descriptionController.text.trim(),
-          imageUrl: _imageController.text.trim(),
+          imageUrl: _imageUrl,
           ownerUid: user.uid,
           status: 'available',
         ),
@@ -115,6 +184,8 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
           itemId: itemId.toString(),
           startingPrice: price,
           minimumIncrement: increment,
+          buyNowPrice: buyNowPrice,
+          reservePrice: reservePrice,
           startTime: _startTime!.toUtc().toIso8601String(),
           endTime: _endTime!.toUtc().toIso8601String(),
           status: 'scheduled',
@@ -124,12 +195,14 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
       _formKey.currentState!.reset();
       _nameController.clear();
       _descriptionController.clear();
-      _imageController.clear();
       _priceController.clear();
       _incrementController.text = '100000';
       setState(() {
         _startTime = null;
         _endTime = null;
+        _selectedImageBytes = null;
+        _selectedImageName = null;
+        _imageUrl = '';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tạo phiên đấu giá thành công.')),
@@ -229,12 +302,39 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _imageController,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Link hình ảnh (tuỳ chọn)',
-                    prefixIcon: Icon(Icons.link),
+                if (_selectedImageBytes != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.memory(
+                      _selectedImageBytes!,
+                      height: 180,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _selectedImageName ?? 'Đã chọn hình ảnh',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                OutlinedButton.icon(
+                  onPressed: _uploadingImage ? null : _pickAndUploadImage,
+                  icon: _uploadingImage
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.upload_rounded),
+                  label: Text(
+                    _uploadingImage
+                        ? 'Đang tải ảnh lên...'
+                        : _imageUrl.isEmpty
+                        ? 'Chọn và tải ảnh lên'
+                        : 'Đổi ảnh',
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -269,6 +369,38 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
                     final increment = int.tryParse(value?.trim() ?? '');
                     return increment == null || increment <= 0
                         ? 'Bước giá không hợp lệ'
+                        : null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _buyNowController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá mua ngay (VNĐ, tùy chọn)',
+                    prefixIcon: Icon(Icons.flash_on_outlined),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return null;
+                    final price = int.tryParse(value.trim());
+                    return price == null || price <= 0
+                        ? 'Giá mua ngay không hợp lệ'
+                        : null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _reserveController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Giá sàn bảo lưu (VNĐ, tùy chọn)',
+                    prefixIcon: Icon(Icons.security_outlined),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) return null;
+                    final price = int.tryParse(value.trim());
+                    return price == null || price <= 0
+                        ? 'Giá bảo lưu không hợp lệ'
                         : null;
                   },
                 ),

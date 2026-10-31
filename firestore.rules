@@ -25,20 +25,51 @@ service cloud.firestore {
 
     match /auction_sessions/{sessionId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if false;
     }
 
     match /bids/{bidId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /bid_proxies/{proxyId} {
+      allow read: if false;
+      allow write: if false;
     }
 
     match /transactions/{transactionId} {
       allow read, write: if true;
     }
 
-    match /{document=**} {
-      allow read, write: if true;
+    match /orders/{orderId} {
+      allow read: if isSignedIn() &&
+        (resource.data.buyerUid == request.auth.uid ||
+         resource.data.sellerUid == request.auth.uid);
+      allow write: if false;
     }
+
+    match /deposits/{depositId} {
+      allow read: if isSignedIn() && resource.data.userUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /escrow_transactions/{transactionId} {
+      allow read: if isSignedIn() &&
+        (resource.data.buyerUid == request.auth.uid ||
+         resource.data.sellerUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    match /second_chance_offers/{offerId} {
+      allow read: if isSignedIn() && resource.data.bidderUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userUid == request.auth.uid;
+      allow write: if false;
+    }
+
   }
 }
