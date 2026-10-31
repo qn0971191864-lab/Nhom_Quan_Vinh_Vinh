@@ -32,7 +32,8 @@ service cloud.firestore {
 
     match /items/{itemId} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
     match /auction_sessions/{sessionId} {

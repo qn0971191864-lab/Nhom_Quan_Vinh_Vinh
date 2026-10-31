@@ -107,6 +107,29 @@ void main() {
       expect(callables.calls.single.data, {'sessionId': 'session-1'});
     });
 
+    test('deletes a session through the trusted backend', () async {
+      await service.deleteAuctionSession(' session-1 ');
+
+      expect(callables.calls.single.name, 'deleteAuctionSession');
+      expect(callables.calls.single.data, {'sessionId': 'session-1'});
+    });
+
+    test('validates identifiers before requesting admin deletes', () async {
+      await expectLater(
+        service.deleteAuctionSession('  '),
+        throwsArgumentError,
+      );
+      await expectLater(service.deleteAuctionItem(0), throwsArgumentError);
+      expect(callables.calls, isEmpty);
+    });
+
+    test('deletes an item through the trusted backend', () async {
+      await service.deleteAuctionItem(42);
+
+      expect(callables.calls.single.name, 'deleteAuctionItem');
+      expect(callables.calls.single.data, {'itemId': '42'});
+    });
+
     test('formatShortUid formats empty, short, and long UIDs correctly', () {
       expect(FirebaseService.formatShortUid(''), 'Người tham gia');
       expect(FirebaseService.formatShortUid('   '), 'Người tham gia');

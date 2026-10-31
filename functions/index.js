@@ -381,6 +381,95 @@ exports.grantAdminRole = onCall(async (request) => {
   return { uid: target.uid, email: target.email, role: 'ADMIN' };
 });
 
+exports.deleteAuctionSession = onCall(async (request) => {
+  requireAdmin(request);
+  const sessionId = request.data?.sessionId;
+  if (typeof sessionId !== 'string' || !sessionId.trim()) {
+    throw new HttpsError('invalid-argument', 'sessionId không hợp lệ.');
+  }
+
+  const sessionRef = sessions.doc(sessionId.trim());
+  await db.runTransaction(async (transaction) => {
+    const sessionSnapshot = await transaction.get(sessionRef);
+    if (!sessionSnapshot.exists) {
+      throw new HttpsError('not-found', 'Không tìm thấy phiên đấu giá.');
+    }
+
+    const session = sessionSnapshot.data();
+    const itemId = session.itemId ?? session.item_id;
+    const itemRef = typeof itemId === 'string' && itemId.trim()
+      ? items.doc(itemId.trim())
+      : null;
+    const relatedRecords = await Promise.all([
+      transaction.get(bids.where('sessionId', '==', sessionRef.id).limit(1)),
+      transaction.get(bidProxies.where('sessionId', '==', sessionRef.id).limit(1)),
+      transaction.get(deposits.where('sessionId', '==', sessionRef.id).limit(1)),
+      transaction.get(orders.where('auctionId', '==', sessionRef.id).limit(1)),
+    ]);
+    if (relatedRecords.some((snapshot) => !snapshot.empty)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Không thể xóa phiên đã có lượt trả giá, tiền cọc hoặc đơn hàng; hãy giữ phiên làm lịch sử giao dịch.',
+      );
+    }
+
+    const itemSnapshot = itemRef ? await transaction.get(itemRef) : null;
+    const siblingSessions = itemRef
+      ? await Promise.all([
+        transaction.get(sessions.where('itemId', '==', itemRef.id)),
+        transaction.get(sessions.where('item_id', '==', itemRef.id)),
+      ])
+      : [];
+    const hasOtherActiveSession = siblingSessions.some((snapshot) =>
+      snapshot.docs.some((doc) =>
+        doc.id !== sessionRef.id &&
+        ['scheduled', 'upcoming', 'active'].includes(doc.get('status')),
+      ),
+    );
+
+    transaction.delete(sessionRef);
+    if (itemSnapshot?.exists &&
+        itemSnapshot.get('status') === 'in_auction' &&
+        !hasOtherActiveSession) {
+      transaction.update(itemSnapshot.ref, { status: 'available' });
+    }
+  });
+
+  return { sessionId: sessionId.trim(), deleted: true };
+});
+
+exports.deleteAuctionItem = onCall(async (request) => {
+  requireAdmin(request);
+  const itemId = request.data?.itemId;
+  if (typeof itemId !== 'string' || !itemId.trim()) {
+    throw new HttpsError('invalid-argument', 'itemId không hợp lệ.');
+  }
+
+  const itemRef = items.doc(itemId.trim());
+  await db.runTransaction(async (transaction) => {
+    const itemSnapshot = await transaction.get(itemRef);
+    if (!itemSnapshot.exists) {
+      throw new HttpsError('not-found', 'Không tìm thấy vật phẩm.');
+    }
+
+    const linkedRecords = await Promise.all([
+      transaction.get(sessions.where('itemId', '==', itemRef.id).limit(1)),
+      transaction.get(sessions.where('item_id', '==', itemRef.id).limit(1)),
+      transaction.get(orders.where('itemId', '==', itemRef.id).limit(1)),
+    ]);
+    if (linkedRecords.some((snapshot) => !snapshot.empty)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Không thể xóa vật phẩm còn liên kết với phiên đấu giá hoặc đơn hàng. Hãy xóa phiên chưa phát sinh giao dịch trước.',
+      );
+    }
+
+    transaction.delete(itemRef);
+  });
+
+  return { itemId: itemId.trim(), deleted: true };
+});
+
 exports.createAuctionSession = onCall(async (request) => {
   const uid = requireUid(request);
   await requireLinkedWallet(uid);

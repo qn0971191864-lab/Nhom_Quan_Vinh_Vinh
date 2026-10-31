@@ -286,6 +286,21 @@ class FirebaseService {
     await _callables.call('cancelAuctionSession', {'sessionId': sessionId});
   }
 
+  Future<void> deleteAuctionSession(String sessionId) async {
+    final trimmedId = sessionId.trim();
+    if (trimmedId.isEmpty) {
+      throw ArgumentError('Mã phiên đấu giá không được để trống.');
+    }
+    await _callables.call('deleteAuctionSession', {'sessionId': trimmedId});
+  }
+
+  Future<void> deleteAuctionItem(int itemId) async {
+    if (itemId <= 0) {
+      throw ArgumentError('Mã vật phẩm phải là số nguyên dương.');
+    }
+    await _callables.call('deleteAuctionItem', {'itemId': itemId.toString()});
+  }
+
   Future<Map<String, dynamic>> confirmOrderAddress({
     required String orderId,
     required String fullName,

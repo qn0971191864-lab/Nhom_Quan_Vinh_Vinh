@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
 import 'auction_session.dart';
+import 'admin_page.dart';
 import 'item.dart';
 import 'services/auth_service.dart';
 import 'services/firebase_service.dart';
@@ -23,12 +24,10 @@ class _ContactPageState extends State<ContactPage> {
   final _passwordController = TextEditingController();
   final _fullnameController = TextEditingController();
   final _topupAmountController = TextEditingController();
-  final _adminEmailController = TextEditingController();
   late final AuthService _auth;
   bool _registering = false;
   bool _busy = false;
   bool _walletBusy = false;
-  bool _adminBusy = false;
   String? _error;
   int _profileSection = 0;
 
@@ -52,7 +51,6 @@ class _ContactPageState extends State<ContactPage> {
     _passwordController.dispose();
     _fullnameController.dispose();
     _topupAmountController.dispose();
-    _adminEmailController.dispose();
     super.dispose();
   }
 
@@ -372,6 +370,12 @@ class _ContactPageState extends State<ContactPage> {
       ).push(MaterialPageRoute(builder: (_) => const TransactionHistoryPage()));
       return;
     }
+    if (index == 4) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const AdminPage()));
+      return;
+    }
     setState(() => _profileSection = index);
   }
 
@@ -401,7 +405,6 @@ class _ContactPageState extends State<ContactPage> {
       child: switch (_profileSection) {
         0 => _accountDetailsContent(user),
         3 => _settingsContent(user),
-        4 when user.role == 'ADMIN' => _adminPanelContent(),
         _ => _wonItemsContent(user),
       },
     );
@@ -723,144 +726,6 @@ class _ContactPageState extends State<ContactPage> {
     );
   }
 
-  Widget _adminPanelContent() {
-    return ListView(
-      padding: const EdgeInsets.all(18),
-      children: [
-        const Text(
-          'QUẢN TRỊ',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Cấp quyền cho tài khoản đã đăng ký và xử lý yêu cầu nạp tiền.',
-          style: TextStyle(color: Color(0xFFAEB8C7)),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _adminEmailController,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: 'Email tài khoản cần cấp quyền admin',
-            prefixIcon: Icon(Icons.alternate_email_rounded),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _adminBusy ? null : _grantAdminRole,
-            icon: const Icon(Icons.admin_panel_settings_outlined),
-            label: Text(_adminBusy ? 'Đang xử lý...' : 'Cấp quyền admin'),
-          ),
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'YÊU CẦU NẠP ĐANG CHỜ',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        const SizedBox(height: 8),
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('wallet_topups')
-              .where('status', isEqualTo: 'pending')
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Text(
-                'Không thể tải yêu cầu: ${snapshot.error}',
-                style: const TextStyle(color: Color(0xFFFFA5A5)),
-              );
-            }
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.data!.docs.isEmpty) {
-              return const Text(
-                'Không có yêu cầu nào đang chờ.',
-                style: TextStyle(color: Colors.white70),
-              );
-            }
-            return Column(
-              children: snapshot.data!.docs.map((request) {
-                final data = request.data();
-                final amount = (data['amount'] as num?)?.toInt() ?? 0;
-                final email = data['email'] as String? ?? '';
-                return Card(
-                  color: const Color(0xFF172A43),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${_formatPrice(amount)} đ',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          email.isEmpty
-                              ? 'UID: ${data['userUid'] ?? 'không rõ'}'
-                              : email,
-                          style: const TextStyle(color: Color(0xFFAEB8C7)),
-                        ),
-                        Text(
-                          'Gửi lúc ${_formatTimestamp(data['createdAt'])}',
-                          style: const TextStyle(
-                            color: Color(0xFFAEB8C7),
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          children: [
-                            OutlinedButton.icon(
-                              onPressed: _adminBusy
-                                  ? null
-                                  : () => _reviewWalletTopup(
-                                      request.id,
-                                      'reject',
-                                    ),
-                              icon: const Icon(Icons.close_rounded),
-                              label: const Text('Từ chối'),
-                            ),
-                            FilledButton.icon(
-                              onPressed: _adminBusy
-                                  ? null
-                                  : () => _reviewWalletTopup(
-                                      request.id,
-                                      'approve',
-                                    ),
-                              icon: const Icon(Icons.check_rounded),
-                              label: const Text('Duyệt cộng tiền'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-      ],
-    );
-  }
-
   Future<void> _showLinkWalletSheet() async {
     var provider = 'MOMO';
     final accountMaskController = TextEditingController();
@@ -964,45 +829,6 @@ class _ContactPageState extends State<ContactPage> {
       _showMessage('Không thể gửi yêu cầu: $error');
     } finally {
       if (mounted) setState(() => _walletBusy = false);
-    }
-  }
-
-  Future<void> _grantAdminRole() async {
-    final email = _adminEmailController.text.trim();
-    if (email.isEmpty) {
-      _showMessage('Vui lòng nhập email tài khoản đã đăng ký.');
-      return;
-    }
-    setState(() => _adminBusy = true);
-    try {
-      await FirebaseFunctions.instance.httpsCallable('grantAdminRole').call({
-        'email': email,
-      });
-      _adminEmailController.clear();
-      _showMessage('Đã cấp quyền admin cho $email.');
-    } catch (error) {
-      _showMessage('Không thể cấp quyền admin: $error');
-    } finally {
-      if (mounted) setState(() => _adminBusy = false);
-    }
-  }
-
-  Future<void> _reviewWalletTopup(String requestId, String decision) async {
-    setState(() => _adminBusy = true);
-    try {
-      await FirebaseFunctions.instance.httpsCallable('reviewWalletTopup').call({
-        'requestId': requestId,
-        'decision': decision,
-      });
-      _showMessage(
-        decision == 'approve'
-            ? 'Đã duyệt và cộng tiền vào ví.'
-            : 'Đã từ chối yêu cầu nạp tiền.',
-      );
-    } catch (error) {
-      _showMessage('Không thể xử lý yêu cầu: $error');
-    } finally {
-      if (mounted) setState(() => _adminBusy = false);
     }
   }
 
