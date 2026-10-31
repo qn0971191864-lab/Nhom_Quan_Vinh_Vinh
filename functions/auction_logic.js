@@ -25,6 +25,7 @@ function calculateWalletReservation({
   walletReservedBalance = 0,
   previousReservation = 0,
   newReservation,
+  additionalRequiredAmount = 0,
 }) {
   if (!Number.isSafeInteger(walletBalance) ||
       walletBalance < 0 ||
@@ -34,12 +35,17 @@ function calculateWalletReservation({
       previousReservation < 0 ||
       previousReservation > walletReservedBalance ||
       !Number.isSafeInteger(newReservation) ||
-      newReservation <= 0) {
+      newReservation <= 0 ||
+      !Number.isSafeInteger(additionalRequiredAmount) ||
+      additionalRequiredAmount < 0) {
     throw new RangeError('Wallet reservation data is invalid.');
   }
 
   const availableBalance = walletBalance - walletReservedBalance + previousReservation;
-  if (!hasSufficientWalletBalance(availableBalance, newReservation)) return null;
+  if (!hasSufficientWalletBalance(
+    availableBalance,
+    newReservation + additionalRequiredAmount,
+  )) return null;
   return {
     availableBalance,
     walletReservedBalance: walletReservedBalance - previousReservation + newReservation,
@@ -233,6 +239,8 @@ module.exports = {
   auctionOutcomeWithReserve,
   getExtendedEndTime,
   hasSufficientWalletBalance,
+  calculateWalletReservation,
+  releaseWalletReservation,
   isBidWindowOpen,
   minimumBidAmount,
   resolveProxyBid,

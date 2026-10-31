@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:cloud_functions/cloud_functions.dart' as cloud_functions;
 import 'package:flutter/material.dart';
 
 import 'bid.dart';
@@ -465,24 +466,52 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
       );
       if (!mounted) return;
       final currentBid = data['currentHighestBid'] as int?;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            currentBid == null
-                ? 'Đặt giá tự động thành công'
-                : 'Giá đấu hiện tại: ${_formatPrice(currentBid)} VNĐ',
-          ),
-        ),
+      await _showBidFeedback(
+        message: currentBid == null
+            ? 'Đặt giá tự động thành công.'
+            : 'Giá đấu hiện tại: ${_formatPrice(currentBid)} VNĐ.',
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: Colors.redAccent,
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
-        ),
-      );
+      await _showBidFeedback(message: _bidErrorMessage(error), isError: true);
     }
+  }
+
+  Future<void> _showBidFeedback({
+    required String message,
+    bool isError = false,
+  }) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          isError ? Icons.error_outline : Icons.check_circle_outline,
+          color: isError ? Colors.redAccent : Colors.green,
+        ),
+        title: Text(isError ? 'Không thể đặt giá' : 'Đặt giá thành công'),
+        content: Text(message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _bidErrorMessage(Object error) {
+    if (error is cloud_functions.FirebaseFunctionsException) {
+      final message = error.message?.trim();
+      if (message != null && message.isNotEmpty) return message;
+    }
+
+    return error
+        .toString()
+        .replaceFirst(RegExp(r'^\[firebase_functions/[^\]]+\]\s*'), '')
+        .replaceFirst(RegExp(r'\s*\[\d{3}\]$'), '')
+        .replaceFirst(RegExp(r'^Exception:\s*'), '')
+        .trim();
   }
 
   Widget _buildBidHistoryList(String sessionId) {

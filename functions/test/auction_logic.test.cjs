@@ -92,6 +92,31 @@ test('wallet reservations account for other bids and replace the old reservation
   }), null);
 });
 
+test('wallet reservation includes a new auction deposit in required funds', () => {
+  assert.equal(calculateWalletReservation({
+    walletBalance: 1000,
+    newReservation: 901,
+    additionalRequiredAmount: 100,
+  }), null);
+  assert.deepEqual(calculateWalletReservation({
+    walletBalance: 1000,
+    newReservation: 900,
+    additionalRequiredAmount: 100,
+  }), {
+    availableBalance: 1000,
+    walletReservedBalance: 900,
+  });
+  assert.deepEqual(calculateWalletReservation({
+    walletBalance: 900,
+    walletReservedBalance: 900,
+    previousReservation: 900,
+    newReservation: 900,
+  }), {
+    availableBalance: 900,
+    walletReservedBalance: 900,
+  });
+});
+
 test('wallet reservation release cannot exceed the reserved balance', () => {
   assert.equal(releaseWalletReservation(500, 300), 200);
   assert.throws(() => releaseWalletReservation(200, 300), RangeError);

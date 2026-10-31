@@ -65,6 +65,9 @@ class _AdminPageState extends State<AdminPage> {
               title: const Text('Quản trị'),
               bottom: const TabBar(
                 isScrollable: true,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                indicatorColor: Colors.white,
                 tabs: [
                   Tab(
                     icon: Icon(Icons.account_balance_wallet_outlined),

@@ -10,6 +10,7 @@ const {
   calculateFinalWinningPrice,
   calculateOrderTotal,
   calculateSellerSettlement,
+  calculateWalletReservation,
   getExtendedEndTime,
   isBidWindowOpen,
   minimumBidAmount,
@@ -584,7 +585,6 @@ exports.createAuctionSession = onCall(async (request) => {
 
 exports.placeBid = onCall(async (request) => {
   const bidderUid = requireUid(request);
-  await requireLinkedWallet(bidderUid);
   const { sessionId } = request.data ?? {};
   if (typeof sessionId !== 'string' || sessionId.trim().length === 0) {
     throw new HttpsError('invalid-argument', 'sessionId không hợp lệ.');
@@ -627,7 +627,18 @@ exports.placeBid = onCall(async (request) => {
 
     const proxyRef = bidProxies.doc(`${sessionRef.id}_${bidderUid}`);
     const reservationRef = walletReservations.doc(`${sessionRef.id}_${bidderUid}`);
-    const [userSnapshot, proxySnapshot, reservationSnapshot, proxiesSnapshot] = await Promise.all([
+    const depositRef = deposits.doc(`${sessionRef.id}_${bidderUid}`);
+    const depositAmount = Math.max(
+      1,
+      Math.ceil(session.startingPrice * 0.1),
+    );
+    const [
+      userSnapshot,
+      proxySnapshot,
+      reservationSnapshot,
+      proxiesSnapshot,
+      depositSnapshot,
+    ] = await Promise.all([
       transaction.get(userRef),
       transaction.get(proxyRef),
       transaction.get(reservationRef),
@@ -636,6 +647,7 @@ exports.placeBid = onCall(async (request) => {
           .where('sessionId', '==', sessionRef.id)
           .where('isActive', '==', true),
       ),
+      transaction.get(depositRef),
     ]);
 
     if (!userSnapshot.exists) {
@@ -649,6 +661,9 @@ exports.placeBid = onCall(async (request) => {
       reservationSnapshot.get('status') === 'active'
       ? reservationSnapshot.data()
       : null;
+    const hasLockedDeposit = depositSnapshot.exists &&
+      depositSnapshot.get('status') === 'locked';
+    const walletBalance = userSnapshot.get('walletBalance');
     if (existingReservation != null &&
         (!Number.isSafeInteger(existingReservation.amount) ||
          existingReservation.amount <= 0)) {
@@ -728,6 +743,7 @@ exports.placeBid = onCall(async (request) => {
         walletReservedBalance: userSnapshot.get('walletReservedBalance') ?? 0,
         previousReservation: existingReservation?.amount ?? 0,
         newReservation: walletReservationAmount,
+        additionalRequiredAmount: hasLockedDeposit ? 0 : depositAmount,
       });
     } catch (error) {
       if (!(error instanceof RangeError)) throw error;
@@ -778,13 +794,7 @@ exports.placeBid = onCall(async (request) => {
       createdAt: existingProxy?.createdAt ?? FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
-    const depositRef = deposits.doc(`${sessionRef.id}_${bidderUid}`);
-    const depositSnapshot = await transaction.get(depositRef);
-    const depositAmount = Math.max(
-      1,
-      Math.ceil(session.startingPrice * 0.1),
-    );
-    if (!depositSnapshot.exists || depositSnapshot.data().status !== 'locked') {
+    if (!hasLockedDeposit) {
       if (!Number.isSafeInteger(walletBalance) || walletBalance < depositAmount) {
         throw new HttpsError(
           'failed-precondition',
