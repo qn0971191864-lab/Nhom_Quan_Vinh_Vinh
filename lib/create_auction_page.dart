@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -29,6 +30,7 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
   DateTime? _endTime;
   bool _busy = false;
   bool _uploadingImage = false;
+  int _uploadProgressPercent = 0;
   Uint8List? _selectedImageBytes;
   String? _selectedImageName;
   String _imageUrl = '';
@@ -85,9 +87,13 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
       if (bytes.isEmpty) {
         throw Exception('Không thể đọc dữ liệu ảnh.');
       }
+      if (bytes.length >= 10 * 1024 * 1024) {
+        throw Exception('Ảnh phải nhỏ hơn 10 MB.');
+      }
 
       setState(() {
         _uploadingImage = true;
+        _uploadProgressPercent = 0;
         _selectedImageBytes = bytes;
         _selectedImageName = file.name;
       });
@@ -104,14 +110,44 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
       final storageRef = FirebaseStorage.instance.ref().child(
         'auction_images/${user.uid}/$fileName$safeExtension',
       );
-      await storageRef.putData(
+      final uploadTask = storageRef.putData(
         bytes,
         SettableMetadata(contentType: _contentType(extension)),
       );
-      final downloadUrl = await storageRef.getDownloadURL();
+      var lastReportedPercent = -1;
+      final progressSubscription = uploadTask.snapshotEvents.listen(
+        (snapshot) {
+          if (!mounted || snapshot.totalBytes == 0) return;
+          final percent =
+              (snapshot.bytesTransferred / snapshot.totalBytes * 100).round();
+          if (percent == lastReportedPercent) return;
+          lastReportedPercent = percent;
+          setState(() => _uploadProgressPercent = percent);
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          debugPrint('Image upload progress error: $error');
+        },
+      );
+      try {
+        await uploadTask.timeout(const Duration(minutes: 2));
+      } on TimeoutException {
+        await uploadTask.cancel();
+        throw TimeoutException(
+          'Tải ảnh quá lâu. Vui lòng kiểm tra kết nối mạng và thử lại.',
+        );
+      } finally {
+        await progressSubscription.cancel();
+      }
+      final downloadUrl = await storageRef.getDownloadURL().timeout(
+        const Duration(seconds: 30),
+      );
       if (!mounted) return;
-      setState(() => _imageUrl = downloadUrl);
+      setState(() {
+        _imageUrl = downloadUrl;
+        _uploadProgressPercent = 100;
+      });
     } catch (error) {
+      debugPrint('Image upload failed: $error');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -120,7 +156,12 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _uploadingImage = false);
+      if (mounted) {
+        setState(() {
+          _uploadingImage = false;
+          _uploadProgressPercent = 0;
+        });
+      }
     }
   }
 
@@ -331,7 +372,7 @@ class _CreateAuctionPageState extends State<CreateAuctionPage> {
                       : const Icon(Icons.upload_rounded),
                   label: Text(
                     _uploadingImage
-                        ? 'Đang tải ảnh lên...'
+                        ? 'Đang tải ảnh lên... $_uploadProgressPercent%'
                         : _imageUrl.isEmpty
                         ? 'Chọn và tải ảnh lên'
                         : 'Đổi ảnh',
