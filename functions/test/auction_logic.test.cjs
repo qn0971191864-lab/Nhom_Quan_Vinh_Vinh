@@ -207,13 +207,13 @@ test('single bidder wins at the starting price', () => {
   }), 100000);
 });
 
-test('order total applies platform fee and winner deposit', () => {
+test('order total adds shipping and subtracts winner deposit without charging fee twice', () => {
   assert.equal(calculateOrderTotal({
     winningBid: 185000,
     platformFeeRate: 0.05,
     shippingFee: 30000,
     depositApplied: 18500,
-  }), 205750);
+  }), 196500);
 });
 
 test('reserve not met expires the auction', () => {

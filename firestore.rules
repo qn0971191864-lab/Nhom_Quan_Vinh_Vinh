@@ -64,6 +64,21 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /linked_wallets/{walletId} {
+      allow read: if isSignedIn() && resource.data.userUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    match /user_wallets/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    match /email_logs/{logId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     match /wallet_topups/{topupId} {
       allow read: if isAdmin() ||
         (isSignedIn() && resource.data.userUid == request.auth.uid);
