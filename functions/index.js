@@ -1,4 +1,5 @@
 const { initializeApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
 const { FieldValue, Timestamp, getFirestore } = require('firebase-admin/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
@@ -8,6 +9,7 @@ const {
   calculateFinalWinningPrice,
   calculateOrderTotal,
   getExtendedEndTime,
+  hasSufficientWalletBalance,
   isBidWindowOpen,
   minimumBidAmount,
   resolveProxyBid,
@@ -34,6 +36,14 @@ function requireUid(request) {
   return uid;
 }
 
+function requireAdmin(request) {
+  const uid = requireUid(request);
+  if (request.auth.token.admin !== true) {
+    throw new HttpsError('permission-denied', 'Chỉ quản trị viên mới được thực hiện thao tác này.');
+  }
+  return uid;
+}
+
 function parseTimestamp(value, fieldName) {
   if (typeof value !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) {
@@ -52,6 +62,109 @@ function requirePositiveInteger(value, fieldName) {
   }
   return value;
 }
+
+exports.createWalletTopup = onCall(async (request) => {
+  const uid = requireUid(request);
+  const amount = requirePositiveInteger(request.data?.amount, 'amount');
+  const userSnapshot = await db.collection('users').doc(uid).get();
+  if (!userSnapshot.exists) {
+    throw new HttpsError('failed-precondition', 'Hồ sơ tài khoản chưa sẵn sàng.');
+  }
+
+  const topupRef = db.collection('wallet_topups').doc();
+  await topupRef.create({
+    userUid: uid,
+    email: userSnapshot.get('email') ?? request.auth.token.email ?? '',
+    fullname: userSnapshot.get('fullname') ?? '',
+    amount,
+    status: 'pending',
+    createdAt: FieldValue.serverTimestamp(),
+    reviewedAt: null,
+    reviewedBy: null,
+  });
+  return { requestId: topupRef.id, status: 'pending' };
+});
+
+exports.reviewWalletTopup = onCall(async (request) => {
+  const adminUid = requireAdmin(request);
+  const { requestId, decision } = request.data ?? {};
+  if (typeof requestId !== 'string' || requestId.trim().length === 0) {
+    throw new HttpsError('invalid-argument', 'requestId không hợp lệ.');
+  }
+  if (decision !== 'approve' && decision !== 'reject') {
+    throw new HttpsError('invalid-argument', 'decision phải là approve hoặc reject.');
+  }
+
+  const topupRef = db.collection('wallet_topups').doc(requestId.trim());
+  await db.runTransaction(async (transaction) => {
+    const topupSnapshot = await transaction.get(topupRef);
+    if (!topupSnapshot.exists) {
+      throw new HttpsError('not-found', 'Không tìm thấy yêu cầu nạp tiền.');
+    }
+    const topup = topupSnapshot.data();
+    if (topup.status !== 'pending') {
+      throw new HttpsError('failed-precondition', 'Yêu cầu này đã được xử lý.');
+    }
+
+    let userRef;
+    let userSnapshot;
+    if (decision === 'approve') {
+      if (!Number.isSafeInteger(topup.amount) || topup.amount <= 0 ||
+          typeof topup.userUid !== 'string') {
+        throw new HttpsError('failed-precondition', 'Dữ liệu yêu cầu nạp tiền không hợp lệ.');
+      }
+      userRef = db.collection('users').doc(topup.userUid);
+      userSnapshot = await transaction.get(userRef);
+      if (!userSnapshot.exists) {
+        throw new HttpsError('not-found', 'Không tìm thấy hồ sơ người dùng.');
+      }
+      const currentBalance = userSnapshot.get('walletBalance') ?? 0;
+      if (!Number.isSafeInteger(currentBalance) || currentBalance < 0 ||
+          !Number.isSafeInteger(currentBalance + topup.amount)) {
+        throw new HttpsError('failed-precondition', 'Số dư ví không hợp lệ hoặc vượt giới hạn.');
+      }
+      transaction.set(userRef, {
+        walletBalance: currentBalance + topup.amount,
+        walletUpdatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+
+    transaction.update(topupRef, {
+      status: decision === 'approve' ? 'approved' : 'rejected',
+      reviewedAt: FieldValue.serverTimestamp(),
+      reviewedBy: adminUid,
+    });
+  });
+  return { requestId: requestId.trim(), status: decision === 'approve' ? 'approved' : 'rejected' };
+});
+
+exports.grantAdminRole = onCall(async (request) => {
+  requireAdmin(request);
+  const email = request.data?.email;
+  if (typeof email !== 'string' || !email.trim()) {
+    throw new HttpsError('invalid-argument', 'Email tài khoản không hợp lệ.');
+  }
+
+  let target;
+  try {
+    target = await getAuth().getUserByEmail(email.trim());
+  } catch (error) {
+    if (error.code === 'auth/user-not-found') {
+      throw new HttpsError('not-found', 'Không tìm thấy tài khoản với email này.');
+    }
+    throw error;
+  }
+
+  await getAuth().setCustomUserClaims(target.uid, {
+    ...target.customClaims,
+    admin: true,
+  });
+  await db.collection('users').doc(target.uid).set({
+    email: target.email,
+    role: 'ADMIN',
+  }, { merge: true });
+  return { uid: target.uid, email: target.email, role: 'ADMIN' };
+});
 
 exports.createAuctionSession = onCall(async (request) => {
   const uid = requireUid(request);
@@ -155,6 +268,7 @@ exports.placeBid = onCall(async (request) => {
   );
   const sessionRef = sessions.doc(sessionId.trim());
   const bidRef = bids.doc();
+  const userRef = db.collection('users').doc(bidderUid);
   let acceptedAt;
   let result;
 
@@ -182,6 +296,14 @@ exports.placeBid = onCall(async (request) => {
     }
     if (session.sellerUid === bidderUid) {
       throw new HttpsError('permission-denied', 'Người bán không thể tự đặt giá.');
+    }
+    const userSnapshot = await transaction.get(userRef);
+    if (!userSnapshot.exists) {
+      throw new HttpsError('failed-precondition', 'Hồ sơ ví chưa sẵn sàng.');
+    }
+    const walletBalance = userSnapshot.get('walletBalance') ?? 0;
+    if (!Number.isSafeInteger(walletBalance) || walletBalance < 0) {
+      throw new HttpsError('failed-precondition', 'Số dư ví không hợp lệ.');
     }
 
     const proxyRef = bidProxies.doc(`${sessionRef.id}_${bidderUid}`);
@@ -250,6 +372,12 @@ exports.placeBid = onCall(async (request) => {
     }
 
     const effectiveMax = resolution.effectiveMax;
+    if (!hasSufficientWalletBalance(walletBalance, effectiveMax)) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Số dư ví không đủ. Cần ít nhất ${effectiveMax} VNĐ để đặt mức giá tối đa này.`,
+      );
+    }
     let effectivePrice = resolution.effectivePrice;
     const buyNowPrice = Number.isSafeInteger(session.buyNowPrice)
       ? session.buyNowPrice

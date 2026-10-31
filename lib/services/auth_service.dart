@@ -9,12 +9,14 @@ class AuthIdentity {
     this.email,
     this.displayName,
     this.photoUrl,
+    this.isAdmin = false,
   });
 
   final String uid;
   final String? email;
   final String? displayName;
   final String? photoUrl;
+  final bool isAdmin;
 }
 
 abstract interface class AuthClient {
@@ -131,6 +133,7 @@ class AuthService {
       await _profiles.setProfile(identity.uid, profile);
     }
     final user = User.fromMap(profile)..firebaseUid = identity.uid;
+    user.role = identity.isAdmin ? 'ADMIN' : 'USER';
     return user;
   }
 }
@@ -141,8 +144,9 @@ class _FirebaseAuthClient implements AuthClient {
   final firebase_auth.FirebaseAuth _auth;
 
   @override
-  Stream<AuthIdentity?> authStateChanges() =>
-      _auth.authStateChanges().map(_toIdentity);
+  Stream<AuthIdentity?> authStateChanges() => _auth.idTokenChanges().asyncMap(
+    (user) async => user == null ? null : _identityFromUser(user),
+  );
 
   @override
   Future<AuthIdentity> createUserWithEmailAndPassword({
@@ -176,18 +180,17 @@ class _FirebaseAuthClient implements AuthClient {
   @override
   Future<void> signOut() => _auth.signOut();
 
-  AuthIdentity? _toIdentity(firebase_auth.User? user) =>
-      user == null ? null : _identityFromUser(user);
-
-  AuthIdentity _identityFromUser(firebase_auth.User? user) {
+  Future<AuthIdentity> _identityFromUser(firebase_auth.User? user) async {
     if (user == null) {
       throw StateError('Firebase Authentication returned no user.');
     }
+    final token = await user.getIdTokenResult();
     return AuthIdentity(
       uid: user.uid,
       email: user.email,
       displayName: user.displayName,
       photoUrl: user.photoURL,
+      isAdmin: token.claims?['admin'] == true,
     );
   }
 }

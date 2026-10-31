@@ -6,6 +6,7 @@ const {
   calculateFinalWinningPrice,
   calculateOrderTotal,
   getExtendedEndTime,
+  hasSufficientWalletBalance,
   isBidWindowOpen,
   minimumBidAmount,
   resolveProxyBid,
@@ -62,6 +63,14 @@ test('subsequent bid threshold includes the configured increment', () => {
     }),
     160,
   );
+});
+
+test('wallet balance must cover the maximum proxy bid', () => {
+  assert.equal(hasSufficientWalletBalance(99, 100), false);
+  assert.equal(hasSufficientWalletBalance(100, 100), true);
+  assert.equal(hasSufficientWalletBalance(101, 100), true);
+  assert.equal(hasSufficientWalletBalance(100, 0), false);
+  assert.equal(hasSufficientWalletBalance(-1, 100), false);
 });
 
 test('invalid price configuration is rejected', () => {

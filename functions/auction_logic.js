@@ -12,6 +12,14 @@ function minimumBidAmount({ startingPrice, currentHighestBid, minimumIncrement }
     : currentHighestBid + minimumIncrement;
 }
 
+function hasSufficientWalletBalance(walletBalance, requiredAmount) {
+  return Number.isSafeInteger(walletBalance) &&
+    walletBalance >= 0 &&
+    Number.isSafeInteger(requiredAmount) &&
+    requiredAmount > 0 &&
+    walletBalance >= requiredAmount;
+}
+
 function isBidWindowOpen({ now, startTime, endTime, status }) {
   return (status === 'scheduled' || status === 'active') &&
     now >= startTime &&
@@ -173,6 +181,7 @@ module.exports = {
   auctionOutcome,
   auctionOutcomeWithReserve,
   getExtendedEndTime,
+  hasSufficientWalletBalance,
   isBidWindowOpen,
   minimumBidAmount,
   resolveProxyBid,

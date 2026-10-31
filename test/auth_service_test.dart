@@ -54,32 +54,40 @@ void main() {
       expect(auth.createdUser, isFalse);
     });
 
-    test(
-      'sign in preserves legacy profile but does not rewrite admin role',
-      () async {
-        profiles.documents['firebase-uid-123'] = {
-          'id': 48,
-          'fullname': 'Saved Name',
-          'email': 'old@example.com',
-          'role': 'ADMIN',
-          'avatar': 'saved.png',
-          'createdAt': '2026-09-16',
-        };
+    test('does not trust an admin role stored in the user profile', () async {
+      profiles.documents['firebase-uid-123'] = {
+        'id': 48,
+        'fullname': 'Saved Name',
+        'email': 'old@example.com',
+        'role': 'ADMIN',
+        'avatar': 'saved.png',
+        'createdAt': '2026-09-16',
+      };
 
-        final user = await service.signIn(
-          email: 'new@example.com',
-          password: 'secret',
-        );
+      final user = await service.signIn(
+        email: 'new@example.com',
+        password: 'secret',
+      );
 
-        expect(user.id, 48);
-        expect(user.firebaseUid, 'firebase-uid-123');
-        expect(user.fullname, 'Saved Name');
-        expect(user.email, 'new@example.com');
-        expect(user.role, 'ADMIN');
-        expect(user.avatar, 'saved.png');
-        expect(profiles.savedUid, isNull);
-      },
-    );
+      expect(user.id, 48);
+      expect(user.firebaseUid, 'firebase-uid-123');
+      expect(user.fullname, 'Saved Name');
+      expect(user.email, 'new@example.com');
+      expect(user.role, 'USER');
+      expect(user.avatar, 'saved.png');
+      expect(profiles.savedUid, isNull);
+    });
+
+    test('uses the verified Firebase admin claim for the user role', () async {
+      auth.isAdmin = true;
+
+      final user = await service.signIn(
+        email: 'admin@example.com',
+        password: 'secret',
+      );
+
+      expect(user.role, 'ADMIN');
+    });
 
     test(
       'does not interpret a numeric Firebase UID as a legacy user id',
@@ -121,6 +129,7 @@ class _FakeAuthClient implements AuthClient {
   String? updatedDisplayName;
   bool createdUser = false;
   bool signedOut = false;
+  bool isAdmin = false;
 
   void emit(AuthIdentity? identity) => _states.add(identity);
 
@@ -133,7 +142,7 @@ class _FakeAuthClient implements AuthClient {
     required String password,
   }) async {
     createdUser = true;
-    return AuthIdentity(uid: uid, email: email);
+    return AuthIdentity(uid: uid, email: email, isAdmin: isAdmin);
   }
 
   @override
@@ -145,7 +154,7 @@ class _FakeAuthClient implements AuthClient {
   Future<AuthIdentity> signInWithEmailAndPassword({
     required String email,
     required String password,
-  }) async => AuthIdentity(uid: uid, email: email);
+  }) async => AuthIdentity(uid: uid, email: email, isAdmin: isAdmin);
 
   @override
   Future<void> signOut() async {
