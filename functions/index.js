@@ -297,14 +297,6 @@ exports.placeBid = onCall(async (request) => {
     if (session.sellerUid === bidderUid) {
       throw new HttpsError('permission-denied', 'Người bán không thể tự đặt giá.');
     }
-    const userSnapshot = await transaction.get(userRef);
-    if (!userSnapshot.exists) {
-      throw new HttpsError('failed-precondition', 'Hồ sơ ví chưa sẵn sàng.');
-    }
-    const walletBalance = userSnapshot.get('walletBalance') ?? 0;
-    if (!Number.isSafeInteger(walletBalance) || walletBalance < 0) {
-      throw new HttpsError('failed-precondition', 'Số dư ví không hợp lệ.');
-    }
 
     const proxyRef = bidProxies.doc(`${sessionRef.id}_${bidderUid}`);
     const [proxySnapshot, proxiesSnapshot] = await Promise.all([
@@ -372,12 +364,6 @@ exports.placeBid = onCall(async (request) => {
     }
 
     const effectiveMax = resolution.effectiveMax;
-    if (!hasSufficientWalletBalance(walletBalance, effectiveMax)) {
-      throw new HttpsError(
-        'failed-precondition',
-        `Số dư ví không đủ. Cần ít nhất ${effectiveMax} VNĐ để đặt mức giá tối đa này.`,
-      );
-    }
     let effectivePrice = resolution.effectivePrice;
     const buyNowPrice = Number.isSafeInteger(session.buyNowPrice)
       ? session.buyNowPrice
