@@ -15,11 +15,13 @@ service cloud.firestore {
         request.auth.uid == uid &&
         request.resource.data.role == 'USER' &&
         (!('walletBalance' in request.resource.data) ||
-         request.resource.data.walletBalance == 0);
+         request.resource.data.walletBalance == 0) &&
+        (!('walletReservedBalance' in request.resource.data) ||
+         request.resource.data.walletReservedBalance == 0);
       allow update: if isSignedIn() &&
         request.auth.uid == uid &&
         !request.resource.data.diff(resource.data).affectedKeys()
-          .hasAny(['role', 'walletBalance']);
+          .hasAny(['role', 'walletBalance', 'walletReservedBalance']);
       allow delete: if false;
     }
 

@@ -8,10 +8,11 @@ const {
   auctionOutcomeWithReserve,
   calculateFinalWinningPrice,
   calculateOrderTotal,
+  calculateWalletReservation,
   getExtendedEndTime,
-  hasSufficientWalletBalance,
   isBidWindowOpen,
   minimumBidAmount,
+  releaseWalletReservation,
   resolveProxyBid,
 } = require('./auction_logic');
 
@@ -24,6 +25,7 @@ const bids = db.collection('bids');
 const bidProxies = db.collection('bid_proxies');
 const orders = db.collection('orders');
 const deposits = db.collection('deposits');
+const walletReservations = db.collection('wallet_reservations');
 const escrowTransactions = db.collection('escrow_transactions');
 const secondChanceOffers = db.collection('second_chance_offers');
 const notifications = db.collection('notifications');
@@ -61,6 +63,118 @@ function requirePositiveInteger(value, fieldName) {
     throw new HttpsError('invalid-argument', `${fieldName} phải là số nguyên dương.`);
   }
   return value;
+}
+
+async function getWalletReservation(transaction, sessionId, userUid) {
+  const reservationRef = walletReservations.doc(`${sessionId}_${userUid}`);
+  const reservationSnapshot = await transaction.get(reservationRef);
+  if (!reservationSnapshot.exists ||
+      reservationSnapshot.get('status') !== 'active') {
+    return null;
+  }
+  const userRef = db.collection('users').doc(userUid);
+  const userSnapshot = await transaction.get(userRef);
+  if (!userSnapshot.exists) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Không tìm thấy hồ sơ người đang giữ tiền trong ví.',
+    );
+  }
+  return { reservationRef, reservationSnapshot, userRef, userSnapshot };
+}
+
+async function getSessionWalletReservations(transaction, sessionId, proxies) {
+  const reservations = await Promise.all(proxies.map((proxy) =>
+    getWalletReservation(transaction, sessionId, proxy.bidderUid),
+  ));
+  return reservations.filter((reservation) => reservation != null);
+}
+
+function releaseSessionWalletReservations(
+  transaction,
+  reservations,
+  { exceptUid = null, now = Timestamp.now() } = {},
+) {
+  for (const reservation of reservations) {
+    const userUid = reservation.reservationSnapshot.get('userUid');
+    if (userUid === exceptUid) continue;
+
+    const currentReservedBalance =
+      reservation.userSnapshot.get('walletReservedBalance') ?? 0;
+    let updatedReservedBalance;
+    try {
+      updatedReservedBalance = releaseWalletReservation(
+        currentReservedBalance,
+        reservation.reservationSnapshot.get('amount'),
+      );
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      throw new HttpsError(
+        'failed-precondition',
+        'Số tiền đang giữ trong ví không khớp dữ liệu đấu giá.',
+      );
+    }
+
+    transaction.update(reservation.userRef, {
+      walletReservedBalance: updatedReservedBalance,
+      walletUpdatedAt: now,
+    });
+    transaction.update(reservation.reservationRef, {
+      status: 'released',
+      releasedAt: now,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+}
+
+function retainWinningWalletReservation(
+  transaction,
+  reservations,
+  userUid,
+  amount,
+  now,
+) {
+  const reservation = reservations.find(
+    (entry) => entry.reservationSnapshot.get('userUid') === userUid,
+  );
+  if (!reservation) return;
+
+  const previousAmount = reservation.reservationSnapshot.get('amount');
+  if (!Number.isSafeInteger(amount) ||
+      amount <= 0 ||
+      !Number.isSafeInteger(previousAmount) ||
+      previousAmount < amount) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Số tiền giữ chỗ của người thắng không hợp lệ.',
+    );
+  }
+  if (previousAmount === amount) return;
+
+  const currentReservedBalance =
+    reservation.userSnapshot.get('walletReservedBalance') ?? 0;
+  let updatedReservedBalance;
+  try {
+    updatedReservedBalance = releaseWalletReservation(
+      currentReservedBalance,
+      previousAmount - amount,
+    );
+  } catch (error) {
+    if (!(error instanceof RangeError)) throw error;
+    throw new HttpsError(
+      'failed-precondition',
+      'Số tiền đang giữ trong ví không khớp dữ liệu đấu giá.',
+    );
+  }
+
+  transaction.update(reservation.userRef, {
+    walletReservedBalance: updatedReservedBalance,
+    walletUpdatedAt: now,
+  });
+  transaction.update(reservation.reservationRef, {
+    amount,
+    updatedAt: FieldValue.serverTimestamp(),
+  });
 }
 
 exports.createWalletTopup = onCall(async (request) => {
@@ -299,20 +413,37 @@ exports.placeBid = onCall(async (request) => {
     }
 
     const proxyRef = bidProxies.doc(`${sessionRef.id}_${bidderUid}`);
-    const [proxySnapshot, proxiesSnapshot] = await Promise.all([
+    const reservationRef = walletReservations.doc(`${sessionRef.id}_${bidderUid}`);
+    const [userSnapshot, proxySnapshot, reservationSnapshot, proxiesSnapshot] = await Promise.all([
+      transaction.get(userRef),
       transaction.get(proxyRef),
+      transaction.get(reservationRef),
       transaction.get(
         bidProxies
           .where('sessionId', '==', sessionRef.id)
-          .where('isActive', '==', true)
-          .limit(20),
+          .where('isActive', '==', true),
       ),
     ]);
 
+    if (!userSnapshot.exists) {
+      throw new HttpsError('failed-precondition', 'Hồ sơ tài khoản chưa sẵn sàng.');
+    }
     const existingProxy = proxySnapshot.exists ? proxySnapshot.data() : null;
     const previousMax = existingProxy?.isActive === true
       ? existingProxy.maxAmount
       : 0;
+    const existingReservation = reservationSnapshot.exists &&
+      reservationSnapshot.get('status') === 'active'
+      ? reservationSnapshot.data()
+      : null;
+    if (existingReservation != null &&
+        (!Number.isSafeInteger(existingReservation.amount) ||
+         existingReservation.amount <= 0)) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Dữ liệu giữ tiền trong ví không hợp lệ.',
+      );
+    }
 
     const proxies = proxiesSnapshot.docs
       .map((doc) => ({ uid: doc.id.includes('_')
@@ -374,6 +505,31 @@ exports.placeBid = onCall(async (request) => {
       effectivePrice = buyNowPrice;
     }
 
+    const walletReservationAmount = buyNowTriggered
+      ? effectivePrice
+      : effectiveMax;
+    let walletReservation;
+    try {
+      walletReservation = calculateWalletReservation({
+        walletBalance: userSnapshot.get('walletBalance'),
+        walletReservedBalance: userSnapshot.get('walletReservedBalance') ?? 0,
+        previousReservation: existingReservation?.amount ?? 0,
+        newReservation: walletReservationAmount,
+      });
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      throw new HttpsError(
+        'failed-precondition',
+        'Số dư ví hoặc số tiền đang giữ không hợp lệ.',
+      );
+    }
+    if (walletReservation == null) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Số dư khả dụng không đủ để giữ ${walletReservationAmount} VNĐ.`,
+      );
+    }
+
     const reservePrice = Number.isSafeInteger(session.reservePrice)
       ? session.reservePrice
       : null;
@@ -385,6 +541,10 @@ exports.placeBid = onCall(async (request) => {
         `Giá tối đa chưa đủ để dẫn đầu. Giá tối thiểu là ${effectivePrice} VNĐ.`,
       );
     }
+
+    const buyNowReservations = buyNowTriggered
+      ? await getSessionWalletReservations(transaction, sessionRef.id, proxies)
+      : [];
 
     acceptedAt = now;
     transaction.create(bidRef, {
@@ -405,6 +565,24 @@ exports.placeBid = onCall(async (request) => {
       createdAt: existingProxy?.createdAt ?? FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });
+    transaction.set(reservationRef, {
+      sessionId: sessionRef.id,
+      userUid: bidderUid,
+      amount: walletReservationAmount,
+      status: 'active',
+      createdAt: existingReservation?.createdAt ?? FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    transaction.update(userRef, {
+      walletReservedBalance: walletReservation.walletReservedBalance,
+      walletUpdatedAt: now,
+    });
+    if (buyNowTriggered) {
+      releaseSessionWalletReservations(transaction, buyNowReservations, {
+        exceptUid: bidderUid,
+        now,
+      });
+    }
     const depositAmount = Math.max(
       session.startingPrice,
       Math.ceil(effectiveMax * 0.1),
@@ -617,11 +795,17 @@ exports.updateAuctionStatuses = onSchedule('every 1 minutes', async () => {
         .map((doc) => ({ id: doc.id, ...doc.data() }))
         .sort((a, b) => b.maxAmount - a.maxAmount ||
           (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0));
+      const sessionReservations = await getSessionWalletReservations(
+        transaction,
+        sessionDoc.id,
+        proxies,
+      );
       const winner = proxies[0] ?? null;
       const reservePrice = Number.isSafeInteger(session.reservePrice)
         ? session.reservePrice
         : null;
       if (!winner) {
+        releaseSessionWalletReservations(transaction, sessionReservations, { now });
         transaction.update(sessionDoc.ref, {
           status: 'expired',
           result: 'no_bids',
@@ -654,6 +838,7 @@ exports.updateAuctionStatuses = onSchedule('every 1 minutes', async () => {
       });
       const reserveMet = reservePrice == null || winningBid >= reservePrice;
       if (!reserveMet) {
+        releaseSessionWalletReservations(transaction, sessionReservations, { now });
         transaction.update(sessionDoc.ref, {
           status: 'expired',
           result: 'reserve_not_met',
@@ -699,6 +884,17 @@ exports.updateAuctionStatuses = onSchedule('every 1 minutes', async () => {
       const paymentDeadline = Timestamp.fromMillis(now.toMillis() + 48 * 60 * 60 * 1000);
       const orderRef = orders.doc(`order_${sessionDoc.id}`);
 
+      releaseSessionWalletReservations(transaction, sessionReservations, {
+        exceptUid: winner.bidderUid,
+        now,
+      });
+      retainWinningWalletReservation(
+        transaction,
+        sessionReservations,
+        winner.bidderUid,
+        winningBid,
+        now,
+      );
       transaction.set(orderRef, {
         auctionId: sessionDoc.id,
         itemId,
@@ -831,6 +1027,16 @@ exports.paymentWebhook = onCall(async (request) => {
     if (now.toMillis() > order.paymentDeadline.toMillis()) {
       throw new HttpsError('failed-precondition', 'Đơn hàng đã hết hạn thanh toán.');
     }
+    const walletReservation = await getWalletReservation(
+      transaction,
+      order.auctionId,
+      order.buyerUid,
+    );
+    releaseSessionWalletReservations(
+      transaction,
+      walletReservation == null ? [] : [walletReservation],
+      { now },
+    );
     transaction.update(orderRef, {
       status: 'PAID',
       paymentReference,
@@ -938,6 +1144,25 @@ exports.handlePaymentTimeout = onSchedule('every 10 minutes', async () => {
       if (order.status !== 'PENDING_PAYMENT') return;
       if (order.paymentDeadline.toMillis() > now.toMillis()) return;
 
+      const proxySnapshot = await transaction.get(
+        bidProxies.where('sessionId', '==', order.auctionId).where('isActive', '==', true),
+      );
+      const proxies = proxySnapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .sort((a, b) => b.maxAmount - a.maxAmount ||
+          (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0));
+      const runnerUp = proxies.find((proxy) => proxy.bidderUid !== order.buyerUid);
+      const walletReservation = await getWalletReservation(
+        transaction,
+        order.auctionId,
+        order.buyerUid,
+      );
+      releaseSessionWalletReservations(
+        transaction,
+        walletReservation == null ? [] : [walletReservation],
+        { now },
+      );
+
       transaction.update(orderDoc.ref, {
         status: 'CANCELLED_NON_PAYMENT',
         cancelledAt: now,
@@ -974,14 +1199,6 @@ exports.handlePaymentTimeout = onSchedule('every 10 minutes', async () => {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      const proxySnapshot = await transaction.get(
-        bidProxies.where('sessionId', '==', order.auctionId).where('isActive', '==', true),
-      );
-      const proxies = proxySnapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .sort((a, b) => b.maxAmount - a.maxAmount ||
-          (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0));
-      const runnerUp = proxies.find((proxy) => proxy.bidderUid !== order.buyerUid);
       if (!runnerUp) return;
       const offerRef = secondChanceOffers.doc(`offer_${order.auctionId}_${runnerUp.bidderUid}`);
       transaction.set(offerRef, {
@@ -1040,10 +1257,60 @@ exports.respondSecondChance = onCall(async (request) => {
       return;
     }
 
-    const auctionSnapshot = await transaction.get(sessions.doc(offer.auctionId));
+    const userRef = db.collection('users').doc(uid);
+    const reservationRef = walletReservations.doc(`${offer.auctionId}_${uid}`);
+    const [auctionSnapshot, userSnapshot, reservationSnapshot] = await Promise.all([
+      transaction.get(sessions.doc(offer.auctionId)),
+      transaction.get(userRef),
+      transaction.get(reservationRef),
+    ]);
+    if (!auctionSnapshot.exists || !userSnapshot.exists) {
+      throw new HttpsError(
+        'failed-precondition',
+        'Không tìm thấy hồ sơ tài khoản hoặc phiên đấu giá.',
+      );
+    }
     const auction = auctionSnapshot.data();
+    const existingReservation = reservationSnapshot.exists &&
+      reservationSnapshot.get('status') === 'active'
+      ? reservationSnapshot.data()
+      : null;
+    let walletReservation;
+    try {
+      walletReservation = calculateWalletReservation({
+        walletBalance: userSnapshot.get('walletBalance'),
+        walletReservedBalance: userSnapshot.get('walletReservedBalance') ?? 0,
+        previousReservation: existingReservation?.amount ?? 0,
+        newReservation: offer.offerPrice,
+      });
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+      throw new HttpsError(
+        'failed-precondition',
+        'Số dư ví hoặc số tiền đang giữ không hợp lệ.',
+      );
+    }
+    if (walletReservation == null) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Số dư khả dụng không đủ để giữ ${offer.offerPrice} VNĐ.`,
+      );
+    }
+
     const paymentDeadline = Timestamp.fromMillis(now.toMillis() + 24 * 60 * 60 * 1000);
     const orderRef = orders.doc(`second_chance_${offer.auctionId}_${uid}`);
+    transaction.set(userRef, {
+      walletReservedBalance: walletReservation.walletReservedBalance,
+      walletUpdatedAt: now,
+    }, { merge: true });
+    transaction.set(reservationRef, {
+      sessionId: offer.auctionId,
+      userUid: uid,
+      amount: offer.offerPrice,
+      status: 'active',
+      createdAt: existingReservation?.createdAt ?? FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
     transaction.set(orderRef, {
       auctionId: offer.auctionId,
       itemId: offer.itemId,

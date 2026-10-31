@@ -20,6 +20,43 @@ function hasSufficientWalletBalance(walletBalance, requiredAmount) {
     walletBalance >= requiredAmount;
 }
 
+function calculateWalletReservation({
+  walletBalance,
+  walletReservedBalance = 0,
+  previousReservation = 0,
+  newReservation,
+}) {
+  if (!Number.isSafeInteger(walletBalance) ||
+      walletBalance < 0 ||
+      !Number.isSafeInteger(walletReservedBalance) ||
+      walletReservedBalance < 0 ||
+      !Number.isSafeInteger(previousReservation) ||
+      previousReservation < 0 ||
+      previousReservation > walletReservedBalance ||
+      !Number.isSafeInteger(newReservation) ||
+      newReservation <= 0) {
+    throw new RangeError('Wallet reservation data is invalid.');
+  }
+
+  const availableBalance = walletBalance - walletReservedBalance + previousReservation;
+  if (!hasSufficientWalletBalance(availableBalance, newReservation)) return null;
+  return {
+    availableBalance,
+    walletReservedBalance: walletReservedBalance - previousReservation + newReservation,
+  };
+}
+
+function releaseWalletReservation(walletReservedBalance, reservationAmount) {
+  if (!Number.isSafeInteger(walletReservedBalance) ||
+      walletReservedBalance < 0 ||
+      !Number.isSafeInteger(reservationAmount) ||
+      reservationAmount <= 0 ||
+      reservationAmount > walletReservedBalance) {
+    throw new RangeError('Wallet reservation data is invalid.');
+  }
+  return walletReservedBalance - reservationAmount;
+}
+
 function isBidWindowOpen({ now, startTime, endTime, status }) {
   return (status === 'scheduled' || status === 'active') &&
     now >= startTime &&
@@ -187,4 +224,6 @@ module.exports = {
   resolveProxyBid,
   calculateFinalWinningPrice,
   calculateOrderTotal,
+  calculateWalletReservation,
+  releaseWalletReservation,
 };

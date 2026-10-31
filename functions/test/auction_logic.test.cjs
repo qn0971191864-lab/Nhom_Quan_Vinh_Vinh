@@ -5,10 +5,12 @@ const {
   auctionOutcomeWithReserve,
   calculateFinalWinningPrice,
   calculateOrderTotal,
+  calculateWalletReservation,
   getExtendedEndTime,
   hasSufficientWalletBalance,
   isBidWindowOpen,
   minimumBidAmount,
+  releaseWalletReservation,
   resolveProxyBid,
 } = require('../auction_logic');
 
@@ -71,6 +73,28 @@ test('wallet balance must cover the maximum proxy bid', () => {
   assert.equal(hasSufficientWalletBalance(101, 100), true);
   assert.equal(hasSufficientWalletBalance(100, 0), false);
   assert.equal(hasSufficientWalletBalance(-1, 100), false);
+});
+
+test('wallet reservations account for other bids and replace the old reservation', () => {
+  assert.deepEqual(calculateWalletReservation({
+    walletBalance: 1000,
+    walletReservedBalance: 300,
+    previousReservation: 100,
+    newReservation: 500,
+  }), {
+    availableBalance: 800,
+    walletReservedBalance: 700,
+  });
+  assert.equal(calculateWalletReservation({
+    walletBalance: 1000,
+    walletReservedBalance: 300,
+    newReservation: 701,
+  }), null);
+});
+
+test('wallet reservation release cannot exceed the reserved balance', () => {
+  assert.equal(releaseWalletReservation(500, 300), 200);
+  assert.throws(() => releaseWalletReservation(200, 300), RangeError);
 });
 
 test('invalid price configuration is rejected', () => {

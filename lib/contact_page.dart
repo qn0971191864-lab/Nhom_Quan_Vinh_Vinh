@@ -478,8 +478,14 @@ class _ContactPageState extends State<ContactPage> {
             if (!snapshot.hasData) {
               return const LinearProgressIndicator();
             }
-            final value = snapshot.data?.data()?['walletBalance'];
-            final balance = value is num ? value.toInt() : 0;
+            final profile = snapshot.data?.data();
+            final balanceValue = profile?['walletBalance'];
+            final reservedValue = profile?['walletReservedBalance'];
+            final balance = balanceValue is num ? balanceValue.toInt() : 0;
+            final reserved = reservedValue is num && reservedValue >= 0
+                ? reservedValue.toInt()
+                : 0;
+            final available = balance > reserved ? balance - reserved : 0;
             return Container(
               width: double.infinity,
               margin: const EdgeInsets.only(bottom: 12),
@@ -492,17 +498,26 @@ class _ContactPageState extends State<ContactPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Số dư hiện tại',
+                    'Số dư khả dụng',
                     style: TextStyle(color: Color(0xFFD4E5EF)),
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    '${_formatPrice(balance)} đ',
+                    '${_formatPrice(available)} đ',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tổng số dư: ${_formatPrice(balance)} đ',
+                    style: const TextStyle(color: Color(0xFFD4E5EF)),
+                  ),
+                  Text(
+                    'Đang giữ chỗ đấu giá: ${_formatPrice(reserved)} đ',
+                    style: const TextStyle(color: Color(0xFFD4E5EF)),
                   ),
                 ],
               ),
