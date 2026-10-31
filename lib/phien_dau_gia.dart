@@ -202,6 +202,7 @@ class _TrangDauGiaPageState extends State<TrangDauGiaPage> {
               child: Image.network(
                 item!.imageUrl,
                 fit: BoxFit.contain,
+                webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
                 errorBuilder: (context, error, stackTrace) =>
                     const Icon(Icons.broken_image_outlined, size: 48),
               ),

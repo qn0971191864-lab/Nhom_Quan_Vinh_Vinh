@@ -554,6 +554,8 @@ class _AuctionCard extends StatelessWidget {
                       : Image.network(
                           item.imageUrl,
                           fit: BoxFit.cover,
+                          webHtmlElementStrategy:
+                              WebHtmlElementStrategy.fallback,
                           errorBuilder: (context, error, stackTrace) =>
                               const ColoredBox(
                                 color: Color(0xFFEDEFF2),
