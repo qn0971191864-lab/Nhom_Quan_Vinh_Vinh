@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'auction_session.dart';
 import 'item.dart';
+import 'item_detail_page.dart';
 import 'news_page.dart';
-import 'phien_dau_gia.dart';
 import 'services/firebase_service.dart';
 
 const _ink = Color(0xFF14243A);
@@ -507,13 +507,14 @@ class _ItemCard extends StatelessWidget {
 
     return InkWell(
       borderRadius: BorderRadius.circular(18),
-      onTap: session == null
-          ? null
-          : () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => TrangDauGiaPage(sessionId: session!.sessionId),
+      onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ItemDetailPage(
+                item: item,
+                session: session,
               ),
             ),
+          ),
       child: Card(
         elevation: 0,
         color: isDark ? const Color(0xFF252526) : Colors.white,

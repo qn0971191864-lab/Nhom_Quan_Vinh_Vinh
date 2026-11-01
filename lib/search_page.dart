@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'auction_session.dart';
 import 'category.dart';
 import 'item.dart';
-import 'phien_dau_gia.dart';
+import 'item_detail_page.dart';
 import 'services/firebase_service.dart';
 
 const _ink = Color(0xFF14243A);
@@ -531,11 +531,12 @@ class _AuctionCard extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: session == null
-            ? null
-            : () => Navigator.of(context).push(
+        onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => TrangDauGiaPage(sessionId: session.sessionId),
+                  builder: (_) => ItemDetailPage(
+                    item: item,
+                    session: session,
+                  ),
                 ),
               ),
         child: Column(
